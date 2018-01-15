@@ -1,25 +1,8 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2010, Red Hat Inc. or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Inc.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.dialect;
 import java.sql.Types;
@@ -28,6 +11,11 @@ import org.hibernate.HibernateException;
 import org.hibernate.cfg.Environment;
 import org.hibernate.dialect.function.SQLFunctionTemplate;
 import org.hibernate.dialect.function.VarArgsSQLFunction;
+import org.hibernate.hql.spi.id.IdTableSupport;
+import org.hibernate.hql.spi.id.IdTableSupportStandardImpl;
+import org.hibernate.hql.spi.id.MultiTableBulkIdStrategy;
+import org.hibernate.hql.spi.id.global.GlobalTemporaryTableBulkIdStrategy;
+import org.hibernate.hql.spi.id.local.AfterUseAction;
 import org.hibernate.type.StandardBasicTypes;
 
 /**
@@ -36,7 +24,9 @@ import org.hibernate.type.StandardBasicTypes;
  *
  * @author Jay Nance
  */
-public class TeradataDialect extends Dialect {
+public class TeradataDialect extends Dialect implements IdTableSupport {
+	
+	private static final int PARAM_LIST_SIZE_LIMIT = 1024;
 
 	/**
 	 * Constructor
@@ -115,40 +105,49 @@ public class TeradataDialect extends Dialect {
 	 *
 	 * @return empty string ... Teradata does not support <tt>FOR UPDATE<tt> syntax
 	 */
+	@Override
 	public String getForUpdateString() {
 		return "";
 	}
 
-	public boolean supportsIdentityColumns() {
-		return false;
-	}
-
+	@Override
 	public boolean supportsSequences() {
 		return false;
 	}
 
+	@Override
 	public String getAddColumnString() {
 		return "Add Column";
 	}
 
-	public boolean supportsTemporaryTables() {
-		return true;
+	@Override
+	public MultiTableBulkIdStrategy getDefaultMultiTableBulkIdStrategy() {
+		return new GlobalTemporaryTableBulkIdStrategy( this, AfterUseAction.CLEAN );
 	}
 
-	public String getCreateTemporaryTableString() {
+	@Override
+	public String generateIdTableName(String baseName) {
+		return IdTableSupportStandardImpl.INSTANCE.generateIdTableName( baseName );
+	}
+
+	@Override
+	public String getCreateIdTableCommand() {
 		return "create global temporary table";
 	}
 
-	public String getCreateTemporaryTablePostfix() {
+	@Override
+	public String getCreateIdTableStatementOptions() {
 		return " on commit preserve rows";
 	}
 
-	public Boolean performTemporaryTableDDLInIsolation() {
-		return Boolean.TRUE;
+	@Override
+	public String getDropIdTableCommand() {
+		return "drop table";
 	}
-
-	public boolean dropTemporaryTableAfterUse() {
-		return false;
+	
+	@Override
+	public String getTruncateIdTableCommand() {
+		return "delete from";
 	}
 
 	/**
@@ -176,22 +175,27 @@ public class TeradataDialect extends Dialect {
 		return super.getTypeName( code, length, p, s );
 	}
 
+	@Override
 	public boolean supportsCascadeDelete() {
 		return false;
 	}
 
+	@Override
 	public boolean supportsCircularCascadeDeleteConstraints() {
 		return false;
 	}
 
+	@Override
 	public boolean areStringComparisonsCaseInsensitive() {
 		return true;
 	}
 
+	@Override
 	public boolean supportsEmptyInList() {
 		return false;
 	}
 
+	@Override
 	public String getSelectClauseNullString(int sqlType) {
 		String v = "null";
 
@@ -237,23 +241,33 @@ public class TeradataDialect extends Dialect {
 		return v;
 	}
 
+	@Override
 	public String getCreateMultisetTableString() {
 		return "create multiset table ";
 	}
 
+	@Override
 	public boolean supportsLobValueChangePropogation() {
 		return false;
 	}
 
+	@Override
 	public boolean doesReadCommittedCauseWritersToBlockReaders() {
 		return true;
 	}
 
+	@Override
 	public boolean doesRepeatableReadCauseReadersToBlockWriters() {
 		return true;
 	}
 
+	@Override
 	public boolean supportsBindAsCallableArgument() {
 		return false;
+	}
+
+	@Override
+	public int getInExpressionCountLimit() {
+		return PARAM_LIST_SIZE_LIMIT;
 	}
 }

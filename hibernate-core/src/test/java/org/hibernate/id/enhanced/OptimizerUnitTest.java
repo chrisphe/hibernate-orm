@@ -1,28 +1,12 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2010, Red Hat Inc. or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Inc.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.id.enhanced;
 
+import org.junit.Ignore;
 import org.junit.Test;
 
 import org.hibernate.id.IdentifierGeneratorHelper;
@@ -49,15 +33,39 @@ public class OptimizerUnitTest extends BaseUnitTestCase {
 		assertEquals( 10, sequence.getTimesCalled() );
 		assertEquals( 10, sequence.getCurrentValue() );
 
-		// test historic table behavior, where the initial values started at 0 (we now force 1 to be the first used id value)
+		// As of HHH-11709 being fixed, Hibernate will use the value retrieved from the sequence,
+		// rather than incrementing 1.
 		sequence = new SourceMock( 0 );
 		optimizer = buildNoneOptimizer( -1, 1 );
 		for ( int i = 1; i < 11; i++ ) {
 			final Long next = ( Long ) optimizer.generate( sequence );
-			assertEquals( i, next.intValue() );
+			assertEquals( i-1, next.intValue() );
 		}
-		assertEquals( 11, sequence.getTimesCalled() ); // an extra time to get to 1 initially
-		assertEquals( 10, sequence.getCurrentValue() );
+		assertEquals( 10, sequence.getTimesCalled() ); // an extra time to get to 1 initially
+		assertEquals( 9, sequence.getCurrentValue() );
+	}
+	@Test
+	public void testBasicNoOptimizerUsageWithNegativeValues() {
+		// test historic sequence behavior, where the initial values start at 1...
+		SourceMock sequence = new SourceMock( -1, -1 );
+		Optimizer optimizer = buildNoneOptimizer( -1, -1 );
+		for ( int i = 1; i < 11; i++ ) {
+			final Long next = ( Long ) optimizer.generate( sequence );
+			assertEquals( -i, next.intValue() );
+		}
+		assertEquals( 10, sequence.getTimesCalled() );
+		assertEquals( -10, sequence.getCurrentValue() );
+
+		// As of HHH-11709 being fixed, Hibernate will use the value retrieved from the sequence,
+		// rather than incrementing 1.
+		sequence = new SourceMock( 0 );
+		optimizer = buildNoneOptimizer( -1, 1 );
+		for ( int i = 1; i < 11; i++ ) {
+			final Long next = ( Long ) optimizer.generate( sequence );
+			assertEquals( i-1, next.intValue() );
+		}
+		assertEquals( 10, sequence.getTimesCalled() ); // an extra time to get to 1 initially
+		assertEquals( 9, sequence.getCurrentValue() );
 	}
 
 	@Test
@@ -102,7 +110,7 @@ public class OptimizerUnitTest extends BaseUnitTestCase {
 		// test historic sequence behavior, where the initial values start at 1...
 		SourceMock sequence = new SourceMock( 1, 10 );
 		Optimizer optimizer = buildPooledOptimizer( -1, 10 );
-		for ( int i = 1; i < 11; i++ ) {
+		for ( int i = 1; i <= 11; i++ ) {
 			next = ( Long ) optimizer.generate( sequence );
 			assertEquals( i, next.intValue() );
 		}
@@ -110,7 +118,7 @@ public class OptimizerUnitTest extends BaseUnitTestCase {
 		assertEquals( 11, sequence.getCurrentValue() );
 		// force a "clock over"
 		next = ( Long ) optimizer.generate( sequence );
-		assertEquals( 11, next.intValue() );
+		assertEquals( 12, next.intValue() );
 		assertEquals( 3, sequence.getTimesCalled() );
 		assertEquals( 21, sequence.getCurrentValue() );
 	}
@@ -127,12 +135,7 @@ public class OptimizerUnitTest extends BaseUnitTestCase {
 		assertEquals( 1001, sequence.getCurrentValue() );
 
 		Long next = (Long) optimizer.generate( sequence );
-		assertEquals( 1001, next.intValue() );
-		assertEquals( (5+1), sequence.getTimesCalled() );
-		assertEquals( (1001+3), sequence.getCurrentValue() );
-
-		next = (Long) optimizer.generate( sequence );
-		assertEquals( (1001+1), next.intValue() );
+		assertEquals( 1001 +1 , next.intValue() );
 		assertEquals( (5+1), sequence.getTimesCalled() );
 		assertEquals( (1001+3), sequence.getCurrentValue() );
 
@@ -141,9 +144,14 @@ public class OptimizerUnitTest extends BaseUnitTestCase {
 		assertEquals( (5+1), sequence.getTimesCalled() );
 		assertEquals( (1001+3), sequence.getCurrentValue() );
 
-		// force a "clock over"
 		next = (Long) optimizer.generate( sequence );
 		assertEquals( (1001+3), next.intValue() );
+		assertEquals( (5+1), sequence.getTimesCalled() );
+		assertEquals( (1001+3), sequence.getCurrentValue() );
+
+		// force a "clock over"
+		next = (Long) optimizer.generate( sequence );
+		assertEquals( (1001+4), next.intValue() );
 		assertEquals( (5+2), sequence.getTimesCalled() );
 		assertEquals( (1001+6), sequence.getCurrentValue() );
 	}
@@ -228,11 +236,10 @@ public class OptimizerUnitTest extends BaseUnitTestCase {
 		// app ends, and starts back up (we should "lose" only 2 and 3 as id values)
 		final Optimizer optimizer2 = buildPooledOptimizer( 1, 3 );
 		next = ( Long ) optimizer2.generate( sequence );
-		assertEquals( 4, next.intValue() );
+		assertEquals( 5, next.intValue() );
 		assertEquals( 3, sequence.getTimesCalled() );
 		assertEquals( 7, sequence.getCurrentValue() );
 	}
-
 	@Test
 	public void testRecoveredPooledLoOptimizerUsage() {
 		final SourceMock sequence = new SourceMock( 1, 3 );
@@ -254,24 +261,61 @@ public class OptimizerUnitTest extends BaseUnitTestCase {
 		assertEquals( 4, sequence.getCurrentValue() );
 	}
 
+	@Test
+	public void testBasicPooledThreadLocalLoOptimizerUsage() {
+		final SourceMock sequence = new SourceMock( 1, 50 ); // pass 5000 to match default for PooledThreadLocalLoOptimizer.THREAD_LOCAL_BLOCK_SIZE
+		final Optimizer optimizer = buildPooledThreadLocalLoOptimizer( 1, 50 );
+
+		assertEquals( 0, sequence.getTimesCalled() );
+		assertEquals( -1, sequence.getCurrentValue() );
+
+		Long next = ( Long ) optimizer.generate( sequence );
+		assertEquals( 1, next.intValue() );
+		assertEquals( 1, sequence.getTimesCalled() );
+		assertEquals( 1, sequence.getCurrentValue() );
+
+		next = ( Long ) optimizer.generate( sequence );
+		assertEquals( 2, next.intValue() );
+		assertEquals( 1, sequence.getTimesCalled() );
+		assertEquals( 1, sequence.getCurrentValue() );
+
+		next = ( Long ) optimizer.generate( sequence );
+		assertEquals( 3, next.intValue() );
+		assertEquals( 1, sequence.getTimesCalled() );
+		assertEquals( 1, sequence.getCurrentValue() );
+
+		for( int looper = 0; looper < 51; looper++) {
+			next = ( Long ) optimizer.generate( sequence );
+		}
+
+		assertEquals( 3 + 51, next.intValue() );
+		assertEquals( 2, sequence.getTimesCalled() );
+		assertEquals( 51, sequence.getCurrentValue() );
+
+	}
+
 	private static Optimizer buildNoneOptimizer(long initial, int increment) {
-		return buildOptimizer( OptimizerFactory.StandardOptimizerDescriptor.NONE, initial, increment );
+		return buildOptimizer( StandardOptimizerDescriptor.NONE, initial, increment );
 	}
 
 	private static Optimizer buildHiloOptimizer(long initial, int increment) {
-		return buildOptimizer( OptimizerFactory.StandardOptimizerDescriptor.HILO, initial, increment );
+		return buildOptimizer( StandardOptimizerDescriptor.HILO, initial, increment );
 	}
 
 	private static Optimizer buildPooledOptimizer(long initial, int increment) {
-		return buildOptimizer( OptimizerFactory.StandardOptimizerDescriptor.POOLED, initial, increment );
+		return buildOptimizer( StandardOptimizerDescriptor.POOLED, initial, increment );
 	}
 
 	private static Optimizer buildPooledLoOptimizer(long initial, int increment) {
-		return buildOptimizer( OptimizerFactory.StandardOptimizerDescriptor.POOLED_LO, initial, increment );
+		return buildOptimizer( StandardOptimizerDescriptor.POOLED_LO, initial, increment );
+	}
+
+	private static Optimizer buildPooledThreadLocalLoOptimizer(long initial, int increment) {
+		return buildOptimizer( StandardOptimizerDescriptor.POOLED_LOTL, initial, increment );
 	}
 
 	private static Optimizer buildOptimizer(
-			OptimizerFactory.StandardOptimizerDescriptor descriptor,
+			StandardOptimizerDescriptor descriptor,
 			long initial,
 			int increment) {
 		return OptimizerFactory.buildOptimizer( descriptor.getExternalName(), Long.class, increment, initial );
@@ -317,6 +361,11 @@ public class OptimizerUnitTest extends BaseUnitTestCase {
 			finally {
 				timesCalled++;
 			}
+		}
+
+		@Override
+		public String getTenantIdentifier() {
+			return null;
 		}
 
 		private void initValue() {

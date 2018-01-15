@@ -1,25 +1,8 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2010, Red Hat Inc. or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Inc.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.mapping;
 
@@ -28,15 +11,19 @@ import java.util.Iterator;
 import java.util.StringTokenizer;
 
 import org.hibernate.EntityMode;
+import org.hibernate.HibernateException;
 import org.hibernate.MappingException;
 import org.hibernate.PropertyNotFoundException;
 import org.hibernate.engine.spi.CascadeStyle;
+import org.hibernate.engine.spi.CascadeStyles;
 import org.hibernate.engine.spi.Mapping;
 import org.hibernate.internal.util.collections.ArrayHelper;
-import org.hibernate.property.Getter;
-import org.hibernate.property.PropertyAccessor;
-import org.hibernate.property.PropertyAccessorFactory;
-import org.hibernate.property.Setter;
+import org.hibernate.property.access.spi.Getter;
+import org.hibernate.property.access.spi.PropertyAccessStrategy;
+import org.hibernate.property.access.spi.PropertyAccessStrategyResolver;
+import org.hibernate.property.access.spi.Setter;
+import org.hibernate.service.ServiceRegistry;
+import org.hibernate.tuple.ValueGeneration;
 import org.hibernate.type.CompositeType;
 import org.hibernate.type.Type;
 
@@ -53,14 +40,15 @@ public class Property implements Serializable, MetaAttributable {
 	private boolean insertable = true;
 	private boolean selectable = true;
 	private boolean optimisticLocked = true;
-	private PropertyGeneration generation = PropertyGeneration.NEVER;
+	private ValueGeneration valueGenerationStrategy;
 	private String propertyAccessorName;
 	private boolean lazy;
+	private String lazyGroup;
 	private boolean optional;
-	private String nodeName;
 	private java.util.Map metaAttributes;
 	private PersistentClass persistentClass;
 	private boolean naturalIdentifier;
+	private boolean lob;
 
 	public boolean isBackRef() {
 		return false;
@@ -124,8 +112,8 @@ public class Property implements Serializable, MetaAttributable {
 		}
 		int length = compositeType.getSubtypes().length;
 		for ( int i=0; i<length; i++ ) {
-			if ( compositeType.getCascadeStyle(i) != CascadeStyle.NONE ) {
-				return CascadeStyle.ALL;
+			if ( compositeType.getCascadeStyle(i) != CascadeStyles.NONE ) {
+				return CascadeStyles.ALL;
 			}
 		}
 		return getCascadeStyle( cascade );
@@ -142,16 +130,16 @@ public class Property implements Serializable, MetaAttributable {
 	
 	private static CascadeStyle getCascadeStyle(String cascade) {
 		if ( cascade==null || cascade.equals("none") ) {
-			return CascadeStyle.NONE;
+			return CascadeStyles.NONE;
 		}
 		else {
 			StringTokenizer tokens = new StringTokenizer(cascade, ", ");
 			CascadeStyle[] styles = new CascadeStyle[ tokens.countTokens() ] ;
 			int i=0;
 			while ( tokens.hasMoreTokens() ) {
-				styles[i++] = CascadeStyle.getCascadeStyle( tokens.nextToken() );
+				styles[i++] = CascadeStyles.getCascadeStyle( tokens.nextToken() );
 			}
-			return new CascadeStyle.MultipleCascadeStyle(styles);
+			return new CascadeStyles.MultipleCascadeStyle(styles);
 		}		
 	}
 	
@@ -187,15 +175,15 @@ public class Property implements Serializable, MetaAttributable {
 			);
 	}
 
-    public PropertyGeneration getGeneration() {
-        return generation;
-    }
+	public ValueGeneration getValueGenerationStrategy() {
+		return valueGenerationStrategy;
+	}
 
-    public void setGeneration(PropertyGeneration generation) {
-        this.generation = generation;
-    }
+	public void setValueGenerationStrategy(ValueGeneration valueGenerationStrategy) {
+		this.valueGenerationStrategy = valueGenerationStrategy;
+	}
 
-    public void setUpdateable(boolean mutable) {
+	public void setUpdateable(boolean mutable) {
 		this.updateable = mutable;
 	}
 
@@ -219,7 +207,7 @@ public class Property implements Serializable, MetaAttributable {
 	}
 
 	public boolean isBasicPropertyAccessor() {
-		return propertyAccessorName==null || "property".equals(propertyAccessorName);
+		return propertyAccessorName==null || "property".equals( propertyAccessorName );
 	}
 
 	public java.util.Map getMetaAttributes() {
@@ -270,7 +258,15 @@ public class Property implements Serializable, MetaAttributable {
 		}
 		return lazy;
 	}
-	
+
+	public String getLazyGroup() {
+		return lazyGroup;
+	}
+
+	public void setLazyGroup(String lazyGroup) {
+		this.lazyGroup = lazyGroup;
+	}
+
 	public boolean isOptimisticLocked() {
 		return optimisticLocked;
 	}
@@ -303,31 +299,51 @@ public class Property implements Serializable, MetaAttributable {
 		this.selectable = selectable;
 	}
 
-	public String getNodeName() {
-		return nodeName;
-	}
-
-	public void setNodeName(String nodeName) {
-		this.nodeName = nodeName;
-	}
-
 	public String getAccessorPropertyName( EntityMode mode ) {
 		return getName();
 	}
 
 	// todo : remove
 	public Getter getGetter(Class clazz) throws PropertyNotFoundException, MappingException {
-		return getPropertyAccessor(clazz).getGetter( clazz, name );
+		return getPropertyAccessStrategy( clazz ).buildPropertyAccess( clazz, name ).getGetter();
 	}
 
 	// todo : remove
 	public Setter getSetter(Class clazz) throws PropertyNotFoundException, MappingException {
-		return getPropertyAccessor(clazz).getSetter(clazz, name);
+		return getPropertyAccessStrategy( clazz ).buildPropertyAccess( clazz, name ).getSetter();
 	}
 
 	// todo : remove
-	public PropertyAccessor getPropertyAccessor(Class clazz) throws MappingException {
-		return PropertyAccessorFactory.getPropertyAccessor( clazz, getPropertyAccessorName() );
+	public PropertyAccessStrategy getPropertyAccessStrategy(Class clazz) throws MappingException {
+		String accessName = getPropertyAccessorName();
+		if ( accessName == null ) {
+			if ( clazz == null || java.util.Map.class.equals( clazz ) ) {
+				accessName = "map";
+			}
+			else {
+				accessName = "property";
+			}
+		}
+
+		final EntityMode entityMode = clazz == null || java.util.Map.class.equals( clazz )
+				? EntityMode.MAP
+				: EntityMode.POJO;
+
+		return resolveServiceRegistry().getService( PropertyAccessStrategyResolver.class ).resolvePropertyAccessStrategy(
+				clazz,
+				accessName,
+				entityMode
+		);
+	}
+
+	protected ServiceRegistry resolveServiceRegistry() {
+		if ( getPersistentClass() != null ) {
+			return getPersistentClass().getServiceRegistry();
+		}
+		if ( getValue() != null ) {
+			return getValue().getServiceRegistry();
+		}
+		throw new HibernateException( "Could not resolve ServiceRegistry" );
 	}
 
 	public boolean isNaturalIdentifier() {
@@ -336,6 +352,14 @@ public class Property implements Serializable, MetaAttributable {
 
 	public void setNaturalIdentifier(boolean naturalIdentifier) {
 		this.naturalIdentifier = naturalIdentifier;
+	}
+
+	public boolean isLob() {
+		return lob;
+	}
+
+	public void setLob(boolean lob) {
+		this.lob = lob;
 	}
 
 }

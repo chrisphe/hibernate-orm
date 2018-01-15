@@ -1,38 +1,21 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2008, Red Hat Middleware LLC or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Middleware LLC.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
- *
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.internal;
+
 import java.io.Serializable;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
-import java.util.Iterator;
 import java.util.Map;
 
 import org.hibernate.Filter;
 import org.hibernate.HibernateException;
 import org.hibernate.engine.spi.FilterDefinition;
+import org.hibernate.engine.spi.SessionFactoryImplementor;
 import org.hibernate.type.Type;
 
 /**
@@ -46,10 +29,10 @@ public class FilterImpl implements Filter, Serializable {
 
 	private transient FilterDefinition definition;
 	private String filterName;
-	private Map<String,Object> parameters = new HashMap<String, Object>();
+	private Map<String,Object> parameters = new HashMap<>();
 	
-	void afterDeserialize(SessionFactoryImpl factory) {
-		definition = factory.getFilterDefinition(filterName);
+	void afterDeserialize(SessionFactoryImplementor factory) {
+		definition = factory.getFilterDefinition( filterName );
 		validate();
 	}
 
@@ -120,7 +103,7 @@ public class FilterImpl implements Filter, Serializable {
 		if ( type == null ) {
 			throw new HibernateException( "Undefined filter parameter [" + name + "]" );
 		}
-		if ( values.size() > 0 ) {
+		if ( !values.isEmpty() ) {
 			Class elementClass = values.iterator().next().getClass();
 			if ( !type.getReturnedClass().isAssignableFrom( elementClass ) ) {
 				throw new HibernateException( "Incorrect type for parameter [" + name + "]" );
@@ -161,9 +144,8 @@ public class FilterImpl implements Filter, Serializable {
 	public void validate() throws HibernateException {
 		// for each of the defined parameters, make sure its value
 		// has been set
-		Iterator itr = definition.getParameterNames().iterator();
-		while ( itr.hasNext() ) {
-			final String parameterName = (String) itr.next();
+
+		for ( final String parameterName : definition.getParameterNames() ) {
 			if ( parameters.get( parameterName ) == null ) {
 				throw new HibernateException(
 						"Filter [" + getName() + "] parameter [" + parameterName + "] value not set"

@@ -1,25 +1,8 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2008-2011, Red Hat Inc. or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Inc.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.action.internal;
 
@@ -28,7 +11,7 @@ import java.io.Serializable;
 import org.hibernate.AssertionFailure;
 import org.hibernate.HibernateException;
 import org.hibernate.collection.spi.PersistentCollection;
-import org.hibernate.engine.spi.SessionImplementor;
+import org.hibernate.engine.spi.SharedSessionContractImplementor;
 import org.hibernate.event.service.spi.EventListenerGroup;
 import org.hibernate.event.spi.EventType;
 import org.hibernate.event.spi.PostCollectionRemoveEvent;
@@ -37,11 +20,13 @@ import org.hibernate.event.spi.PreCollectionRemoveEvent;
 import org.hibernate.event.spi.PreCollectionRemoveEventListener;
 import org.hibernate.persister.collection.CollectionPersister;
 
+/**
+ * The action for removing a collection
+ */
 public final class CollectionRemoveAction extends CollectionAction {
-
-	private boolean emptySnapshot;
 	private final Object affectedOwner;
-	
+	private boolean emptySnapshot;
+
 	/**
 	 * Removes a persistent collection from its loaded owner.
 	 *
@@ -60,9 +45,9 @@ public final class CollectionRemoveAction extends CollectionAction {
 				final CollectionPersister persister,
 				final Serializable id,
 				final boolean emptySnapshot,
-				final SessionImplementor session) {
+				final SharedSessionContractImplementor session) {
 		super( persister, collection, id, session );
-		if (collection == null) {
+		if ( collection == null ) {
 			throw new AssertionFailure("collection == null");
 		}
 		this.emptySnapshot = emptySnapshot;
@@ -90,9 +75,9 @@ public final class CollectionRemoveAction extends CollectionAction {
 				final CollectionPersister persister,
 				final Serializable id,
 				final boolean emptySnapshot,
-				final SessionImplementor session) {
+				final SharedSessionContractImplementor session) {
 		super( persister, null, id, session );
-		if (affectedOwner == null) {
+		if ( affectedOwner == null ) {
 			throw new AssertionFailure("affectedOwner == null");
 		}
 		this.emptySnapshot = emptySnapshot;
@@ -112,24 +97,20 @@ public final class CollectionRemoveAction extends CollectionAction {
 		}
 		
 		final PersistentCollection collection = getCollection();
-		if (collection!=null) {
-			getSession().getPersistenceContext()
-				.getCollectionEntry(collection)
-				.afterAction(collection);
+		if ( collection != null ) {
+			getSession().getPersistenceContext().getCollectionEntry( collection ).afterAction( collection );
 		}
-		
-		evict();
 
-		postRemove();		
+		evict();
+		postRemove();
 
 		if ( getSession().getFactory().getStatistics().isStatisticsEnabled() ) {
-			getSession().getFactory().getStatisticsImplementor()
-					.removeCollection( getPersister().getRole() );
+			getSession().getFactory().getStatistics().removeCollection( getPersister().getRole() );
 		}
 	}
 
 	private void preRemove() {
-		EventListenerGroup<PreCollectionRemoveEventListener> listenerGroup = listenerGroup( EventType.PRE_COLLECTION_REMOVE );
+		final EventListenerGroup<PreCollectionRemoveEventListener> listenerGroup = listenerGroup( EventType.PRE_COLLECTION_REMOVE );
 		if ( listenerGroup.isEmpty() ) {
 			return;
 		}
@@ -145,7 +126,7 @@ public final class CollectionRemoveAction extends CollectionAction {
 	}
 
 	private void postRemove() {
-		EventListenerGroup<PostCollectionRemoveEventListener> listenerGroup = listenerGroup( EventType.POST_COLLECTION_REMOVE );
+		final EventListenerGroup<PostCollectionRemoveEventListener> listenerGroup = listenerGroup( EventType.POST_COLLECTION_REMOVE );
 		if ( listenerGroup.isEmpty() ) {
 			return;
 		}

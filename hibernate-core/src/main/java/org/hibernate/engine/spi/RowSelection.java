@@ -1,25 +1,8 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2008-2011, Red Hat Inc. or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Inc.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.engine.spi;
 
@@ -35,6 +18,13 @@ public final class RowSelection {
 	private Integer fetchSize;
 
 	public void setFirstRow(Integer firstRow) {
+		if ( firstRow != null && firstRow < 0 ) {
+			throw new IllegalArgumentException( "first-row value cannot be negative : " + firstRow );
+		}
+		this.firstRow = firstRow;
+	}
+
+	public void setFirstRow(int firstRow) {
 		this.firstRow = firstRow;
 	}
 
@@ -46,11 +36,19 @@ public final class RowSelection {
 		this.maxRows = maxRows;
 	}
 
+	public void setMaxRows(int maxRows) {
+		this.maxRows = maxRows;
+	}
+
 	public Integer getMaxRows() {
 		return maxRows;
 	}
 
 	public void setTimeout(Integer timeout) {
+		this.timeout = timeout;
+	}
+
+	public void setTimeout(int timeout) {
 		this.timeout = timeout;
 	}
 
@@ -66,8 +64,12 @@ public final class RowSelection {
 		this.fetchSize = fetchSize;
 	}
 
-	public boolean definesLimits() {
-		return maxRows != null ||
-	           ( firstRow != null && firstRow.intValue() <= 0 );
+	public void setFetchSize(int fetchSize) {
+		this.fetchSize = fetchSize;
 	}
+
+	public boolean definesLimits() {
+		return maxRows != null || (firstRow != null && firstRow <= 0);
+	}
+
 }

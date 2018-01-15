@@ -1,31 +1,10 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2010, Red Hat Inc. or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Inc.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.dialect;
-import java.io.ObjectStreamException;
-import java.io.Serializable;
-import java.util.HashMap;
-import java.util.Map;
 
 /**
  * Defines how we need to reference columns in the group-by, having, and order-by
@@ -33,18 +12,14 @@ import java.util.Map;
  *
  * @author Steve Ebersole
  */
-public class ResultColumnReferenceStrategy implements Serializable {
-
-	private static final Map INSTANCES = new HashMap();
-
+public enum ResultColumnReferenceStrategy {
 	/**
 	 * This strategy says to reference the result columns by the qualified column name
 	 * found in the result source.  This strategy is not strictly allowed by ANSI SQL
 	 * but is Hibernate's legacy behavior and is also the fastest of the strategies; thus
 	 * it should be used if supported by the underlying database.
 	 */
-	public static final ResultColumnReferenceStrategy SOURCE = new ResultColumnReferenceStrategy( "source");
-
+	SOURCE,
 	/**
 	 * For databases which do not support {@link #SOURCE}, ANSI SQL defines two allowable
 	 * approaches.  One is to reference the result column by the alias it is given in the
@@ -52,8 +27,7 @@ public class ResultColumnReferenceStrategy implements Serializable {
 	 * <p/>
 	 * The other QNSI SQL compliant approach is {@link #ORDINAL}.
 	 */
-	public static final ResultColumnReferenceStrategy ALIAS = new ResultColumnReferenceStrategy( "alias" );
-
+	ALIAS,
 	/**
 	 * For databases which do not support {@link #SOURCE}, ANSI SQL defines two allowable
 	 * approaches.  One is to reference the result column by the ordinal position at which
@@ -61,29 +35,25 @@ public class ResultColumnReferenceStrategy implements Serializable {
 	 * <p/>
 	 * The other QNSI SQL compliant approach is {@link #ALIAS}.
 	 */
-	public static final ResultColumnReferenceStrategy ORDINAL = new ResultColumnReferenceStrategy( "ordinal" );
+	ORDINAL;
 
-	static {
-		ResultColumnReferenceStrategy.INSTANCES.put( ResultColumnReferenceStrategy.SOURCE.name, ResultColumnReferenceStrategy.SOURCE );
-		ResultColumnReferenceStrategy.INSTANCES.put( ResultColumnReferenceStrategy.ALIAS.name, ResultColumnReferenceStrategy.ALIAS );
-		ResultColumnReferenceStrategy.INSTANCES.put( ResultColumnReferenceStrategy.ORDINAL.name, ResultColumnReferenceStrategy.ORDINAL );
-	}
-
-	private final String name;
-
-	public ResultColumnReferenceStrategy(String name) {
-		this.name = name;
-	}
-
-	public String toString() {
-		return name;
-	}
-
-	private Object readResolve() throws ObjectStreamException {
-		return parse( name );
-	}
-
-	public static ResultColumnReferenceStrategy parse(String name) {
-		return ( ResultColumnReferenceStrategy ) ResultColumnReferenceStrategy.INSTANCES.get( name );
+	/**
+	 * Resolves the strategy by name, in a case insensitive manner.  If the name cannot be resolved, {@link #SOURCE}
+	 * is returned as the default.
+	 *
+	 * @param name The strategy name to resolve
+	 *
+	 * @return The resolved strategy
+	 */
+	public static ResultColumnReferenceStrategy resolveByName(String name) {
+		if ( ALIAS.name().equalsIgnoreCase( name ) ) {
+			return ALIAS;
+		}
+		else if ( ORDINAL.name().equalsIgnoreCase( name ) ) {
+			return ORDINAL;
+		}
+		else {
+			return SOURCE;
+		}
 	}
 }

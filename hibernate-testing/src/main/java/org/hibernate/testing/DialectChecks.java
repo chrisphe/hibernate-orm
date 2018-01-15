@@ -1,25 +1,8 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2010, Red Hat Inc. or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Inc.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.testing;
 
@@ -44,9 +27,15 @@ abstract public class DialectChecks {
 		}
 	}
 
+	public static class UsesInputStreamToInsertBlob implements DialectCheck {
+		public boolean isMatch(Dialect dialect) {
+			return dialect.useInputStreamToInsertBlob();
+		}
+	}
+
 	public static class SupportsIdentityColumns implements DialectCheck {
 		public boolean isMatch(Dialect dialect) {
-			return dialect.supportsIdentityColumns();
+			return dialect.getIdentityColumnSupport().supportsIdentityColumns();
 		}
 	}
 
@@ -74,6 +63,12 @@ abstract public class DialectChecks {
 		}
 	}
 
+	public static class SupportsCascadeDeleteCheck implements DialectCheck {
+		public boolean isMatch(Dialect dialect) {
+			return dialect.supportsCascadeDelete();
+		}
+	}
+
 	public static class SupportsCircularCascadeDeleteCheck implements DialectCheck {
 		public boolean isMatch(Dialect dialect) {
 			return dialect.supportsCircularCascadeDeleteConstraints();
@@ -89,12 +84,6 @@ abstract public class DialectChecks {
 	public static class SupportSubqueryAsLeftHandSideInPredicate implements DialectCheck {
 		public boolean isMatch(Dialect dialect) {
 			return dialect.supportsSubselectAsInPredicateLHS();
-		}
-	}
-
-	public static class SupportNotNullUnique implements DialectCheck {
-		public boolean isMatch(Dialect dialect) {
-			return dialect.supportsNotNullUnique();
 		}
 	}
 
@@ -119,6 +108,12 @@ abstract public class DialectChecks {
 	public static class HasSelfReferentialForeignKeyBugCheck implements DialectCheck {
 		public boolean isMatch(Dialect dialect) {
 			return dialect.hasSelfReferentialForeignKeyBug();
+		}
+	}
+
+	public static class SupportsRowValueConstructorSyntaxCheck implements DialectCheck {
+		public boolean isMatch(Dialect dialect) {
+			return dialect.supportsRowValueConstructorSyntax();
 		}
 	}
 
@@ -161,6 +156,77 @@ abstract public class DialectChecks {
 	public static class SupportsLobValueChangePropogation implements DialectCheck {
 		public boolean isMatch(Dialect dialect) {
 			return dialect.supportsLobValueChangePropogation();
+		}
+	}
+	
+	public static class SupportsLockTimeouts implements DialectCheck {
+		public boolean isMatch(Dialect dialect) {
+			return dialect.supportsLockTimeouts();
+		}
+	}
+
+	public static class DoubleQuoteQuoting implements DialectCheck {
+		@Override
+		public boolean isMatch(Dialect dialect) {
+			return '\"' == dialect.openQuote() && '\"' == dialect.closeQuote();
+		}
+	}
+
+	public static class SupportSchemaCreation implements DialectCheck {
+		public boolean isMatch(Dialect dialect) {
+			return dialect.canCreateSchema();
+		}
+	}
+
+	public static class SupportCatalogCreation implements DialectCheck {
+		public boolean isMatch(Dialect dialect) {
+			return dialect.canCreateCatalog();
+		}
+	}
+
+	public static class DoesNotSupportRowValueConstructorSyntax implements DialectCheck {
+		public boolean isMatch(Dialect dialect) {
+			return dialect.supportsRowValueConstructorSyntax() == false;
+		}
+	}
+
+	public static class DoesNotSupportFollowOnLocking implements DialectCheck {
+		public boolean isMatch(Dialect dialect) {
+			return !dialect.useFollowOnLocking( null );
+		}
+	}
+
+	public static class SupportPartitionBy implements DialectCheck {
+		public boolean isMatch(Dialect dialect) {
+			return dialect.supportsPartitionBy();
+		}
+	}
+
+	public static class SupportNonQueryValuesListWithCTE implements DialectCheck {
+		public boolean isMatch(Dialect dialect) {
+			return dialect.supportsValuesList() &&
+					dialect.supportsNonQueryWithCTE() &&
+					dialect.supportsRowValueConstructorSyntaxInInList();
+		}
+	}
+
+	public static class SupportValuesListAndRowValueConstructorSyntaxInInList
+			implements DialectCheck {
+		public boolean isMatch(Dialect dialect) {
+			return dialect.supportsValuesList() &&
+					dialect.supportsRowValueConstructorSyntaxInInList();
+		}
+	}
+
+	public static class SupportRowValueConstructorSyntaxInInList implements DialectCheck {
+		public boolean isMatch(Dialect dialect) {
+			return dialect.supportsRowValueConstructorSyntaxInInList();
+		}
+	}
+
+	public static class SupportSkipLocked implements DialectCheck {
+		public boolean isMatch(Dialect dialect) {
+			return dialect.supportsSkipLocked();
 		}
 	}
 }

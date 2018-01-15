@@ -1,40 +1,28 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2008, Red Hat Middleware LLC or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Middleware LLC.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
- *
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.id;
+
 import java.io.Serializable;
 import java.util.Properties;
 
 import org.hibernate.MappingException;
 import org.hibernate.Session;
 import org.hibernate.TransientObjectException;
-import org.hibernate.dialect.Dialect;
 import org.hibernate.engine.internal.ForeignKeys;
-import org.hibernate.engine.spi.SessionImplementor;
+import org.hibernate.engine.spi.SharedSessionContractImplementor;
+import org.hibernate.internal.CoreMessageLogger;
+import org.hibernate.loader.PropertyPath;
 import org.hibernate.persister.entity.EntityPersister;
+import org.hibernate.service.ServiceRegistry;
 import org.hibernate.type.EntityType;
 import org.hibernate.type.Type;
+
+import static org.hibernate.internal.CoreLogging.logger;
+import static org.hibernate.internal.CoreLogging.messageLogger;
 
 /**
  * <b>foreign</b><br>
@@ -47,6 +35,8 @@ import org.hibernate.type.Type;
  * @author Gavin King
  */
 public class ForeignGenerator implements IdentifierGenerator, Configurable {
+	private static final CoreMessageLogger LOG = messageLogger( ForeignGenerator.class );
+
 	private String entityName;
 	private String propertyName;
 
@@ -78,10 +68,9 @@ public class ForeignGenerator implements IdentifierGenerator, Configurable {
 		return getEntityName() + '.' + getPropertyName();
 	}
 
-	/**
-	 * {@inheritDoc}
-	 */
-	public void configure(Type type, Properties params, Dialect d) {
+
+	@Override
+	public void configure(Type type, Properties params, ServiceRegistry serviceRegistry) throws MappingException {
 		propertyName = params.getProperty( "property" );
 		entityName = params.getProperty( ENTITY_NAME );
 		if ( propertyName==null ) {
@@ -89,13 +78,12 @@ public class ForeignGenerator implements IdentifierGenerator, Configurable {
 		}
 	}
 
-	/**
-	 * {@inheritDoc}
-	 */
-	public Serializable generate(SessionImplementor sessionImplementor, Object object) {
-		Session session = ( Session ) sessionImplementor;
+	@Override
+	public Serializable generate(SharedSessionContractImplementor sessionImplementor, Object object) {
+		// needs to be a Session for the #save and #contains calls below...
+		final Session session = ( Session ) sessionImplementor;
 
-		final EntityPersister persister = sessionImplementor.getFactory().getEntityPersister( entityName );
+		final EntityPersister persister = sessionImplementor.getFactory().getMetamodel().entityPersister( entityName );
 		Object associatedObject = persister.getPropertyValue( object, propertyName );
 		if ( associatedObject == null ) {
 			throw new IdentifierGenerationException(
@@ -111,7 +99,7 @@ public class ForeignGenerator implements IdentifierGenerator, Configurable {
 		}
 		else {
 			// try identifier mapper
-			foreignValueSourceType = (EntityType) persister.getPropertyType( "_identifierMapper." + propertyName );
+			foreignValueSourceType = (EntityType) persister.getPropertyType( PropertyPath.IDENTIFIER_MAPPER_PROPERTY + "." + propertyName );
 		}
 
 		Serializable id;
@@ -123,10 +111,16 @@ public class ForeignGenerator implements IdentifierGenerator, Configurable {
 			);
 		}
 		catch (TransientObjectException toe) {
+			if ( LOG.isDebugEnabled() ) {
+				LOG.debugf(
+						"ForeignGenerator detected a transient entity [%s]",
+						foreignValueSourceType.getAssociatedEntityName()
+				);
+			}
 			id = session.save( foreignValueSourceType.getAssociatedEntityName(), associatedObject );
 		}
 
-		if ( session.contains(object) ) {
+		if ( session.contains( entityName, object ) ) {
 			//abort the save (the object is already saved by a circular cascade)
 			return IdentifierGeneratorHelper.SHORT_CIRCUIT_INDICATOR;
 			//throw new IdentifierGenerationException("save associated object first, or disable cascade for inverse association");

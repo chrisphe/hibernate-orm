@@ -1,28 +1,11 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2008, Red Hat Middleware LLC or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Middleware LLC.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
- *
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate;
+
 import java.util.List;
 
 import org.hibernate.criterion.CriteriaSpecification;
@@ -31,6 +14,7 @@ import org.hibernate.criterion.Order;
 import org.hibernate.criterion.Projection;
 import org.hibernate.sql.JoinType;
 import org.hibernate.transform.ResultTransformer;
+
 
 /**
  * <tt>Criteria</tt> is a simplified API for retrieving entities
@@ -119,7 +103,7 @@ public interface Criteria extends CriteriaSpecification {
 	 * @return this (for method chaining)
 	 */
 	public Criteria add(Criterion criterion);
-	
+
 	/**
 	 * Add an {@link Order ordering} to the result set.
 	 *
@@ -133,7 +117,7 @@ public interface Criteria extends CriteriaSpecification {
 	 * Specify an association fetching strategy for an association or a
 	 * collection of values.
 	 *
-	 * @param associationPath a dot seperated property path
+	 * @param associationPath a dot separated property path
 	 * @param mode The fetch mode for the referenced association
 	 *
 	 * @return this (for method chaining)
@@ -143,7 +127,7 @@ public interface Criteria extends CriteriaSpecification {
 	public Criteria setFetchMode(String associationPath, FetchMode mode) throws HibernateException;
 
 	/**
-	 * Set the lock mode of the current entity
+	 * Set the lock mode of the current entity.
 	 *
 	 * @param lockMode The lock mode to be applied
 	 *
@@ -152,7 +136,7 @@ public interface Criteria extends CriteriaSpecification {
 	public Criteria setLockMode(LockMode lockMode);
 
 	/**
-	 * Set the lock mode of the aliased entity
+	 * Set the lock mode of the aliased entity.
 	 *
 	 * @param alias The previously assigned alias representing the entity to
 	 *			which the given lock mode should apply.
@@ -168,7 +152,7 @@ public interface Criteria extends CriteriaSpecification {
 	 * Functionally equivalent to {@link #createAlias(String, String, JoinType )} using
 	 * {@link JoinType#INNER_JOIN} for the joinType.
 	 *
-	 * @param associationPath A dot-seperated property path
+	 * @param associationPath A dot-separated property path
 	 * @param alias The alias to assign to the joined association (for later reference).
 	 *
 	 * @return this (for method chaining)
@@ -184,7 +168,7 @@ public interface Criteria extends CriteriaSpecification {
 	 * The joinType is expected to be one of {@link JoinType#INNER_JOIN} (the default),
 	 * {@link JoinType#FULL_JOIN}, or {@link JoinType#LEFT_OUTER_JOIN}.
 	 *
-	 * @param associationPath A dot-seperated property path
+	 * @param associationPath A dot-separated property path
 	 * @param alias The alias to assign to the joined association (for later reference).
 	 * @param joinType The type of join to use.
 	 *
@@ -201,7 +185,7 @@ public interface Criteria extends CriteriaSpecification {
 	 * The joinType is expected to be one of {@link #INNER_JOIN} (the default),
 	 * {@link #FULL_JOIN}, or {@link #LEFT_JOIN}.
 	 *
-	 * @param associationPath A dot-seperated property path
+	 * @param associationPath A dot-separated property path
 	 * @param alias The alias to assign to the joined association (for later reference).
 	 * @param joinType The type of join to use.
 	 *
@@ -220,7 +204,7 @@ public interface Criteria extends CriteriaSpecification {
 	 * The joinType is expected to be one of {@link JoinType#INNER_JOIN} (the default),
 	 * {@link JoinType#FULL_JOIN}, or {@link JoinType#LEFT_OUTER_JOIN}.
 	 *
-	 * @param associationPath A dot-seperated property path
+	 * @param associationPath A dot-separated property path
 	 * @param alias The alias to assign to the joined association (for later reference).
 	 * @param joinType The type of join to use.
 	 * @param withClause The criteria to be added to the join condition (<tt>ON</tt> clause)
@@ -238,7 +222,7 @@ public interface Criteria extends CriteriaSpecification {
 	 * The joinType is expected to be one of {@link #INNER_JOIN} (the default),
 	 * {@link #FULL_JOIN}, or {@link #LEFT_JOIN}.
 	 *
-	 * @param associationPath A dot-seperated property path
+	 * @param associationPath A dot-separated property path
 	 * @param alias The alias to assign to the joined association (for later reference).
 	 * @param joinType The type of join to use.
 	 * @param withClause The criteria to be added to the join condition (<tt>ON</tt> clause)
@@ -257,7 +241,7 @@ public interface Criteria extends CriteriaSpecification {
 	 * Functionally equivalent to {@link #createCriteria(String, org.hibernate.sql.JoinType)} using
 	 * {@link JoinType#INNER_JOIN} for the joinType.
 	 *
-	 * @param associationPath A dot-seperated property path
+	 * @param associationPath A dot-separated property path
 	 *
 	 * @return the created "sub criteria"
 	 *
@@ -269,7 +253,7 @@ public interface Criteria extends CriteriaSpecification {
 	 * Create a new <tt>Criteria</tt>, "rooted" at the associated entity, using the
 	 * specified join type.
 	 *
-	 * @param associationPath A dot-seperated property path
+	 * @param associationPath A dot-separated property path
 	 * @param joinType The type of join to use.
 	 *
 	 * @return the created "sub criteria"
@@ -282,7 +266,7 @@ public interface Criteria extends CriteriaSpecification {
 	 * Create a new <tt>Criteria</tt>, "rooted" at the associated entity, using the
 	 * specified join type.
 	 *
-	 * @param associationPath A dot-seperated property path
+	 * @param associationPath A dot-separated property path
 	 * @param joinType The type of join to use.
 	 *
 	 * @return the created "sub criteria"
@@ -300,7 +284,7 @@ public interface Criteria extends CriteriaSpecification {
 	 * Functionally equivalent to {@link #createCriteria(String, String, org.hibernate.sql.JoinType)} using
 	 * {@link JoinType#INNER_JOIN} for the joinType.
 	 *
-	 * @param associationPath A dot-seperated property path
+	 * @param associationPath A dot-separated property path
 	 * @param alias The alias to assign to the joined association (for later reference).
 	 *
 	 * @return the created "sub criteria"
@@ -313,7 +297,7 @@ public interface Criteria extends CriteriaSpecification {
 	 * Create a new <tt>Criteria</tt>, "rooted" at the associated entity,
 	 * assigning the given alias and using the specified join type.
 	 *
-	 * @param associationPath A dot-seperated property path
+	 * @param associationPath A dot-separated property path
 	 * @param alias The alias to assign to the joined association (for later reference).
 	 * @param joinType The type of join to use.
 	 *
@@ -327,7 +311,7 @@ public interface Criteria extends CriteriaSpecification {
 	 * Create a new <tt>Criteria</tt>, "rooted" at the associated entity,
 	 * assigning the given alias and using the specified join type.
 	 *
-	 * @param associationPath A dot-seperated property path
+	 * @param associationPath A dot-separated property path
 	 * @param alias The alias to assign to the joined association (for later reference).
 	 * @param joinType The type of join to use.
 	 *
@@ -344,7 +328,7 @@ public interface Criteria extends CriteriaSpecification {
 	 * Create a new <tt>Criteria</tt>, "rooted" at the associated entity,
 	 * assigning the given alias and using the specified join type.
 	 *
-	 * @param associationPath A dot-seperated property path
+	 * @param associationPath A dot-separated property path
 	 * @param alias The alias to assign to the joined association (for later reference).
 	 * @param joinType The type of join to use.
 	 * @param withClause The criteria to be added to the join condition (<tt>ON</tt> clause)
@@ -359,7 +343,7 @@ public interface Criteria extends CriteriaSpecification {
 	 * Create a new <tt>Criteria</tt>, "rooted" at the associated entity,
 	 * assigning the given alias and using the specified join type.
 	 *
-	 * @param associationPath A dot-seperated property path
+	 * @param associationPath A dot-separated property path
 	 * @param alias The alias to assign to the joined association (for later reference).
 	 * @param joinType The type of join to use.
 	 * @param withClause The criteria to be added to the join condition (<tt>ON</tt> clause)
@@ -393,7 +377,7 @@ public interface Criteria extends CriteriaSpecification {
 	 * @return this (for method chaining)
 	 */
 	public Criteria setMaxResults(int maxResults);
-	
+
 	/**
 	 * Set the first result to be retrieved.
 	 *
@@ -505,6 +489,18 @@ public interface Criteria extends CriteriaSpecification {
 	 * @return this (for method chaining)
 	 */
 	public Criteria setComment(String comment);
+	
+	  
+	/**
+	 * Add a DB query hint to the SQL.  These differ from JPA's {@link javax.persistence.QueryHint}, which is specific
+	 * to the JPA implementation and ignores DB vendor-specific hints.  Instead, these are intended solely for the
+	 * vendor-specific hints, such as Oracle's optimizers.  Multiple query hints are supported; the Dialect will
+	 * determine concatenation and placement.
+	 * 
+	 * @param hint The database specific query hint to add.
+	 * @return this (for method chaining)
+	 */
+	public Criteria addQueryHint(String hint);
 
 	/**
 	 * Override the flush mode for this particular query.
@@ -531,9 +527,9 @@ public interface Criteria extends CriteriaSpecification {
 	 * exeucting the SQL or processing the SQL results.
 	 */
 	public List list() throws HibernateException;
-	
+
 	/**
-	 * Get the results as an instance of {@link ScrollableResults}
+	 * Get the results as an instance of {@link ScrollableResults}.
 	 *
 	 * @return The {@link ScrollableResults} representing the matched
 	 * query results.

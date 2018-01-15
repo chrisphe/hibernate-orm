@@ -1,3 +1,10 @@
+/*
+ * Hibernate, Relational Persistence for Idiomatic Java
+ *
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
+ */
+
 //$Id$
 package org.hibernate.test.annotations.onetoone;
 import javax.persistence.Entity;
@@ -13,8 +20,8 @@ import org.hibernate.annotations.Parameter;
  */
 @Entity
 public class OwnerAddress {
-	@Id @GeneratedValue(generator = "fk")
-	@GenericGenerator(strategy = "foreign", name = "fk", parameters = @Parameter(name="property", value="owner"))
+	@Id @GeneratedValue(generator = "fk_1")
+	@GenericGenerator(strategy = "foreign", name = "fk_1", parameters = @Parameter(name="property", value="owner"))
 	private Integer id;
 
 	@OneToOne(mappedBy="address")

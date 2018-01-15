@@ -1,25 +1,8 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2011, Red Hat Inc. or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Inc.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.cache.ehcache.management.impl;
 
@@ -49,7 +32,7 @@ public abstract class EhcacheHibernateMbeanNames {
 	/**
 	 * Filter out invalid ObjectName characters from s.
 	 *
-	 * @param s
+	 * @param s the name to be filtered out
 	 *
 	 * @return A valid JMX ObjectName attribute value.
 	 */
@@ -60,19 +43,19 @@ public abstract class EhcacheHibernateMbeanNames {
 	/**
 	 * Returns an ObjectName for the passed name
 	 *
-	 * @param name
+	 * @param cacheManagerClusterUUID the UUID of the cacheManager within the cluster
+	 * @param name the name to use, which should be made "mbean safe"
 	 *
 	 * @return An {@link javax.management.ObjectName} using the input name of cache manager
 	 *
-	 * @throws javax.management.MalformedObjectNameException
+	 * @throws javax.management.MalformedObjectNameException The name derived from the params does not correspond to a valid ObjectName
 	 */
 	public static ObjectName getCacheManagerObjectName(String cacheManagerClusterUUID, String name)
 			throws MalformedObjectNameException {
-		ObjectName objectName = new ObjectName(
-				GROUP_ID + ":type=" + EHCACHE_HIBERNATE_TYPE + ",name=" + mbeanSafe( name )
-						+ getBeanNameSuffix( cacheManagerClusterUUID )
+		return new ObjectName(
+				GROUP_ID + ":type=" + EHCACHE_HIBERNATE_TYPE
+						+ ",name=" + mbeanSafe( name ) + getBeanNameSuffix( cacheManagerClusterUUID )
 		);
-		return objectName;
 	}
 
 	private static String getBeanNameSuffix(String cacheManagerClusterUUID) {

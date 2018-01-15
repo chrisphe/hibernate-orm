@@ -1,26 +1,8 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2008, Red Hat Middleware LLC or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Middleware LLC.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
- *
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.hql.internal.ast.util;
 
@@ -30,8 +12,8 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.ListIterator;
 import java.util.StringTokenizer;
-
-import org.jboss.logging.Logger;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import org.hibernate.AssertionFailure;
 import org.hibernate.dialect.Dialect;
@@ -42,9 +24,11 @@ import org.hibernate.hql.internal.ast.HqlSqlWalker;
 import org.hibernate.hql.internal.ast.tree.DotNode;
 import org.hibernate.hql.internal.ast.tree.FromClause;
 import org.hibernate.hql.internal.ast.tree.FromElement;
+import org.hibernate.hql.internal.ast.tree.ImpliedFromElement;
 import org.hibernate.hql.internal.ast.tree.ParameterContainer;
 import org.hibernate.hql.internal.ast.tree.QueryNode;
 import org.hibernate.hql.internal.classic.ParserHelper;
+import org.hibernate.internal.CoreLogging;
 import org.hibernate.internal.CoreMessageLogger;
 import org.hibernate.internal.FilterImpl;
 import org.hibernate.internal.util.StringHelper;
@@ -62,8 +46,10 @@ import org.hibernate.type.Type;
  * @author Joshua Davis
  */
 public class JoinProcessor implements SqlTokenTypes {
+	private static final CoreMessageLogger LOG = CoreLogging.messageLogger( JoinProcessor.class );
 
-    private static final CoreMessageLogger LOG = Logger.getMessageLogger(CoreMessageLogger.class, JoinProcessor.class.getName());
+	private static final Pattern DYNAMIC_FILTER_PATTERN = Pattern.compile(":(\\w+\\S*)\\s");
+	private static final String LITERAL_DELIMITER = "'";
 
 	private final HqlSqlWalker walker;
 	private final SyntheticAndFactory syntheticAndFactory;
@@ -82,20 +68,29 @@ public class JoinProcessor implements SqlTokenTypes {
 	 * Translates an AST join type (i.e., the token type) into a JoinFragment.XXX join type.
 	 *
 	 * @param astJoinType The AST join type (from HqlSqlTokenTypes or SqlTokenTypes)
+	 *
 	 * @return a JoinFragment.XXX join type.
+	 *
 	 * @see JoinFragment
 	 * @see SqlTokenTypes
 	 */
 	public static JoinType toHibernateJoinType(int astJoinType) {
 		switch ( astJoinType ) {
-			case LEFT_OUTER:
+			case LEFT_OUTER: {
 				return JoinType.LEFT_OUTER_JOIN;
-			case INNER:
+			}
+			case INNER: {
 				return JoinType.INNER_JOIN;
-			case RIGHT_OUTER:
+			}
+			case RIGHT_OUTER: {
 				return JoinType.RIGHT_OUTER_JOIN;
-			default:
+			}
+			case FULL: {
+				return JoinType.FULL_JOIN;
+			}
+			default: {
 				throw new AssertionFailure( "undefined join type " + astJoinType );
+			}
 		}
 	}
 
@@ -108,7 +103,7 @@ public class JoinProcessor implements SqlTokenTypes {
 			// found it easiest to simply reorder the FromElements here into ascending order
 			// in terms of injecting them into the resulting sql ast in orders relative to those
 			// expected by the old parser; this is definitely another of those "only needed
-			// for regression purposes".  The SyntheticAndFactory, then, simply injects them as it
+			// for regression purposes". The SyntheticAndFactory, then, simply injects them as it
 			// encounters them.
 			fromElements = new ArrayList();
 			ListIterator liter = fromClause.getFromElements().listIterator( fromClause.getFromElements().size() );
@@ -117,32 +112,53 @@ public class JoinProcessor implements SqlTokenTypes {
 			}
 		}
 		else {
-			fromElements = fromClause.getFromElements();
+			fromElements = new ArrayList( fromClause.getFromElements().size() );
+			ListIterator<FromElement> liter = fromClause.getFromElements().listIterator();
+			while ( liter.hasNext() ) {
+				FromElement fromElement = liter.next();
+
+				// We found an implied from element that is used in the WITH clause of another from element, so it need to become part of it's join sequence
+				if ( fromElement instanceof ImpliedFromElement
+						&& fromElement.getOrigin().getWithClauseFragment() != null
+						&& fromElement.getOrigin().getWithClauseFragment().contains( fromElement.getTableAlias() ) ) {
+					fromElement.getOrigin().getJoinSequence().addJoin( (ImpliedFromElement) fromElement );
+					// This from element will be rendered as part of the origins join sequence
+					fromElement.setText( "" );
+				}
+				else {
+					fromElements.add( fromElement );
+				}
+			}
 		}
 
 		// Iterate through the alias,JoinSequence pairs and generate SQL token nodes.
 		Iterator iter = fromElements.iterator();
 		while ( iter.hasNext() ) {
-			final FromElement fromElement = ( FromElement ) iter.next();
+			final FromElement fromElement = (FromElement) iter.next();
 			JoinSequence join = fromElement.getJoinSequence();
-            join.setSelector(new JoinSequence.Selector() {
-                public boolean includeSubclasses( String alias ) {
-                    // The uber-rule here is that we need to include subclass joins if
-                    // the FromElement is in any way dereferenced by a property from
-                    // the subclass table; otherwise we end up with column references
-                    // qualified by a non-existent table reference in the resulting SQL...
-                    boolean containsTableAlias = fromClause.containsTableAlias(alias);
-                    if (fromElement.isDereferencedBySubclassProperty()) {
-                        // TODO : or should we return 'containsTableAlias'??
-						LOG.tracev( "Forcing inclusion of extra joins [alias={0}, containsTableAlias={1}]", alias, containsTableAlias );
-                        return true;
-                    }
-                    boolean shallowQuery = walker.isShallowQuery();
-                    boolean includeSubclasses = fromElement.isIncludeSubclasses();
-                    boolean subQuery = fromClause.isSubQuery();
-                    return includeSubclasses && containsTableAlias && !subQuery && !shallowQuery;
+			join.setSelector(
+					new JoinSequence.Selector() {
+						public boolean includeSubclasses(String alias) {
+							// The uber-rule here is that we need to include subclass joins if
+							// the FromElement is in any way dereferenced by a property from
+							// the subclass table; otherwise we end up with column references
+							// qualified by a non-existent table reference in the resulting SQL...
+							boolean containsTableAlias = fromClause.containsTableAlias( alias );
+							if ( fromElement.isDereferencedBySubclassProperty() ) {
+								// TODO : or should we return 'containsTableAlias'??
+								LOG.tracev(
+										"Forcing inclusion of extra joins [alias={0}, containsTableAlias={1}]",
+										alias,
+										containsTableAlias
+								);
+								return true;
+							}
+							boolean shallowQuery = walker.isShallowQuery();
+							boolean includeSubclasses = fromElement.isIncludeSubclasses();
+							boolean subQuery = fromClause.isSubQuery();
+							return includeSubclasses && containsTableAlias && !subQuery && !shallowQuery;
+						}
 					}
-            }
 			);
 			addJoinNodes( query, join, fromElement );
 		}
@@ -153,8 +169,7 @@ public class JoinProcessor implements SqlTokenTypes {
 		JoinFragment joinFragment = join.toJoinFragment(
 				walker.getEnabledFilters(),
 				fromElement.useFromFragment() || fromElement.isDereferencedBySuperclassOrSubclassProperty(),
-				fromElement.getWithClauseFragment(),
-				fromElement.getWithClauseJoinAlias()
+				fromElement.getWithClauseFragment()
 		);
 
 		String frag = joinFragment.toFromFragmentString();
@@ -170,7 +185,9 @@ public class JoinProcessor implements SqlTokenTypes {
 		}
 
 		// If there is a FROM fragment and the FROM element is an explicit, then add the from part.
-		if ( fromElement.useFromFragment() /*&& StringHelper.isNotEmpty( frag )*/ ) {
+		if ( fromElement.useFromFragment() ||
+				( fromElement.getFromClause().isSubQuery()
+						&& fromElement.isDereferencedBySuperclassOrSubclassProperty() ) /*&& StringHelper.isNotEmpty( frag )*/ ) {
 			String fromFragment = processFromFragment( frag, join ).trim();
 			LOG.debugf( "Using FROM fragment [%s]", fromFragment );
 			processDynamicFilterParameters(
@@ -191,7 +208,7 @@ public class JoinProcessor implements SqlTokenTypes {
 
 	private String processFromFragment(String frag, JoinSequence join) {
 		String fromFragment = frag.trim();
-		// The FROM fragment will probably begin with ', '.  Remove this if it is present.
+		// The FROM fragment will probably begin with ', '. Remove this if it is present.
 		if ( fromFragment.startsWith( ", " ) ) {
 			fromFragment = fromFragment.substring( 2 );
 		}
@@ -203,16 +220,13 @@ public class JoinProcessor implements SqlTokenTypes {
 			final ParameterContainer container,
 			final HqlSqlWalker walker) {
 		if ( walker.getEnabledFilters().isEmpty()
-				&& ( ! hasDynamicFilterParam( sqlFragment ) )
-				&& ( ! ( hasCollectionFilterParam( sqlFragment ) ) ) ) {
+				&& ( !hasDynamicFilterParam( walker, sqlFragment ) )
+				&& ( !( hasCollectionFilterParam( sqlFragment ) ) ) ) {
 			return;
 		}
 
-		Dialect dialect = walker.getSessionFactoryHelper().getFactory().getDialect();
-		String symbols = new StringBuilder().append( ParserHelper.HQL_SEPARATORS )
-				.append( dialect.openQuote() )
-				.append( dialect.closeQuote() )
-				.toString();
+		Dialect dialect = walker.getDialect();
+		String symbols = ParserHelper.HQL_SEPARATORS + dialect.openQuote() + dialect.closeQuote();
 		StringTokenizer tokens = new StringTokenizer( sqlFragment, symbols, true );
 		StringBuilder result = new StringBuilder();
 
@@ -221,20 +235,26 @@ public class JoinProcessor implements SqlTokenTypes {
 			if ( token.startsWith( ParserHelper.HQL_VARIABLE_PREFIX ) ) {
 				final String filterParameterName = token.substring( 1 );
 				final String[] parts = LoadQueryInfluencers.parseFilterParameterName( filterParameterName );
-				final FilterImpl filter = ( FilterImpl ) walker.getEnabledFilters().get( parts[0] );
+				final FilterImpl filter = (FilterImpl) walker.getEnabledFilters().get( parts[0] );
 				final Object value = filter.getParameter( parts[1] );
 				final Type type = filter.getFilterDefinition().getParameterType( parts[1] );
 				final String typeBindFragment = StringHelper.join(
 						",",
 						ArrayHelper.fillArray(
-								"?", type.getColumnSpan(
-								walker.getSessionFactoryHelper().getFactory()
-						)
+								"?",
+								type.getColumnSpan( walker.getSessionFactoryHelper().getFactory() )
 						)
 				);
-				final String bindFragment = ( value != null && Collection.class.isInstance( value ) )
-						? StringHelper.join( ",", ArrayHelper.fillArray( typeBindFragment, ( ( Collection ) value ).size() ) )
-						: typeBindFragment;
+				final String bindFragment;
+				if ( value != null && Collection.class.isInstance( value ) ) {
+					bindFragment = StringHelper.join(
+							",",
+							ArrayHelper.fillArray( typeBindFragment, ( (Collection) value ).size() )
+					);
+				}
+				else {
+					bindFragment = typeBindFragment;
+				}
 				result.append( bindFragment );
 				container.addEmbeddedParameter( new DynamicFilterParameterSpecification( parts[0], parts[1], type ) );
 			}
@@ -246,11 +266,18 @@ public class JoinProcessor implements SqlTokenTypes {
 		container.setText( result.toString() );
 	}
 
-	private static boolean hasDynamicFilterParam(String sqlFragment) {
-		return sqlFragment.indexOf( ParserHelper.HQL_VARIABLE_PREFIX ) < 0;
+	private static boolean hasDynamicFilterParam(HqlSqlWalker walker, String sqlFragment) {
+		String closeQuote = String.valueOf( walker.getDialect().closeQuote()  );
+
+		Matcher matcher = DYNAMIC_FILTER_PATTERN.matcher( sqlFragment );
+		if ( matcher.find() && matcher.groupCount() > 0 ) {
+			String match = matcher.group( 1 );
+			return match.endsWith( closeQuote ) || match.endsWith( LITERAL_DELIMITER );
+		}
+		return true;
 	}
 
 	private static boolean hasCollectionFilterParam(String sqlFragment) {
-		return sqlFragment.indexOf( "?" ) < 0;
+		return !sqlFragment.contains( "?" );
 	}
 }

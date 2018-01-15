@@ -1,4 +1,11 @@
+/*
+ * Hibernate, Relational Persistence for Idiomatic Java
+ *
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
+ */
 package org.hibernate.envers;
+
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
@@ -11,7 +18,7 @@ import java.lang.annotation.Target;
  * the many side. Then, Envers won't use a join table to audit this relation, but will store changes as in a normal
  * bi-directional relation.
  * </p>
- *
+ * <p/>
  * <p>
  * This annotation is <b>experimental</b> and may change in future releases.
  * </p>
@@ -21,16 +28,17 @@ import java.lang.annotation.Target;
 @Retention(RetentionPolicy.RUNTIME)
 @Target({ElementType.METHOD, ElementType.FIELD})
 public @interface AuditMappedBy {
-    /**
-     * @return Name of the property in the related entity which maps back to this entity. The property should be
-     * mapped with {@code @ManyToOne} and {@code @Column(insertable=false, updatable=false)}.
-     */
-    String  mappedBy();
+	/**
+	 * Name of the property in the related entity which maps back to this entity. The property should be
+	 * mapped with {@code @ManyToOne} and {@code @Column(insertable=false, updatable=false)}.
+	 */
+	String mappedBy();
 
-    /**
-     * @return Name of the property in the related entity which maps to the position column. Should be specified only
-     * for indexed collection, when @{@link org.hibernate.annotations.IndexColumn} is used on the collection.
-     * The property should be mapped with {@code @Column(insertable=false, updatable=false)}.
-     */
-    String  positionMappedBy()  default "";
+	/**
+	 * Name of the property in the related entity which maps to the position column. Should be specified only
+	 * for indexed collection, when @{@link org.hibernate.annotations.IndexColumn} or
+	 * {@link javax.persistence.OrderColumn} is used on the collection.  The property should be mapped with
+	 * {@code @Column(insertable=false, updatable=false)}.
+	 */
+	String positionMappedBy() default "";
 }

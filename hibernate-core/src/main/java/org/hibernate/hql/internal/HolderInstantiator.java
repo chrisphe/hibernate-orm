@@ -1,29 +1,12 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2008, Red Hat Middleware LLC or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Middleware LLC.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
- *
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.hql.internal;
 import java.lang.reflect.Constructor;
+import java.util.function.Supplier;
 
 import org.hibernate.transform.AliasToBeanConstructorResultTransformer;
 import org.hibernate.transform.ResultTransformer;
@@ -34,10 +17,10 @@ import org.hibernate.transform.Transformers;
  */
 public final class HolderInstantiator {
 		
-	public static final HolderInstantiator NOOP_INSTANTIATOR = new HolderInstantiator(null,null);
+	public static final HolderInstantiator NOOP_INSTANTIATOR = new HolderInstantiator(null);
 	
 	private final ResultTransformer transformer;
-	private final String[] queryReturnAliases;
+	private Supplier<String[]> queryReturnAliasesSupplier = () -> null;
 	
 	public static HolderInstantiator getHolderInstantiator(ResultTransformer selectNewTransformer, ResultTransformer customTransformer, String[] queryReturnAliases) {
 		return new HolderInstantiator(
@@ -65,23 +48,29 @@ public final class HolderInstantiator {
 		}
 	}
 	
-	static public HolderInstantiator createClassicHolderInstantiator(Constructor constructor, 
+	static public HolderInstantiator createClassicHolderInstantiator(Constructor constructor,
 			ResultTransformer transformer) {
-		return new HolderInstantiator( resolveClassicResultTransformer( constructor, transformer ), null );
+		return new HolderInstantiator( resolveClassicResultTransformer( constructor, transformer ) );
 	}
 
 	static public ResultTransformer resolveClassicResultTransformer(
 			Constructor constructor,
 			ResultTransformer transformer) {
 		return constructor != null ? new AliasToBeanConstructorResultTransformer( constructor ) : transformer;
-	}	
+	}
 
-	public HolderInstantiator( 
-			ResultTransformer transformer,
-			String[] queryReturnAliases
-	) {
+	public HolderInstantiator(ResultTransformer transformer) {
+		this.transformer = transformer;
+	}
+
+	public HolderInstantiator(ResultTransformer transformer, String[] queryReturnAliases) {
 		this.transformer = transformer;		
-		this.queryReturnAliases = queryReturnAliases;
+		this.queryReturnAliasesSupplier = () -> queryReturnAliases;
+	}
+
+	public HolderInstantiator(ResultTransformer transformer,  Supplier<String[]> queryReturnAliasesSupplier) {
+		this.transformer = transformer;
+		this.queryReturnAliasesSupplier = queryReturnAliasesSupplier;
 	}
 	
 	public boolean isRequired() {
@@ -89,15 +78,16 @@ public final class HolderInstantiator {
 	}
 	
 	public Object instantiate(Object[] row) {
-		if(transformer==null) {
+		if (transformer==null) {
 			return row;
-		} else {
-			return transformer.transformTuple(row, queryReturnAliases);
+		}
+		else {
+			return transformer.transformTuple(row, getQueryReturnAliases());
 		}
 	}	
 	
 	public String[] getQueryReturnAliases() {
-		return queryReturnAliases;
+		return queryReturnAliasesSupplier.get();
 	}
 
 	public ResultTransformer getResultTransformer() {

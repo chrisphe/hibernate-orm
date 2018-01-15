@@ -1,107 +1,168 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2011, Red Hat Inc. or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Inc.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.test.schemaupdate;
 
+import java.io.File;
+import java.nio.file.Files;
+import java.util.EnumSet;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+import org.hibernate.boot.MetadataSources;
+import org.hibernate.boot.spi.MetadataImplementor;
+import org.hibernate.cfg.Environment;
+import org.hibernate.dialect.Dialect;
+import org.hibernate.service.ServiceRegistry;
+import org.hibernate.tool.hbm2ddl.SchemaExport;
+import org.hibernate.tool.schema.TargetType;
+
+import org.hibernate.testing.DialectChecks;
+import org.hibernate.testing.RequiresDialectFeature;
+import org.hibernate.testing.ServiceRegistryBuilder;
+import org.hibernate.testing.TestForIssue;
+import org.hibernate.testing.junit4.BaseUnitTestCase;
+import org.junit.After;
+import org.junit.Before;
 import org.junit.Test;
 
-import org.hibernate.cfg.Configuration;
-import org.hibernate.dialect.Dialect;
-import org.hibernate.testing.junit4.BaseUnitTestCase;
-import org.hibernate.tool.hbm2ddl.SchemaExport;
-
+import static org.hamcrest.core.Is.is;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertThat;
+import static org.junit.Assert.assertTrue;
 
 /**
  * @author Gail Badner
  */
-public abstract class SchemaExportTest extends BaseUnitTestCase {
-    private final String MAPPING = "org/hibernate/test/schemaupdate/mapping.hbm.xml";
-
-    protected abstract SchemaExport createSchemaExport(Configuration cfg);
-
+public class SchemaExportTest extends BaseUnitTestCase {
     private boolean doesDialectSupportDropTableIfExist() {
         return Dialect.getDialect().supportsIfExistsAfterTableName() || Dialect.getDialect()
                 .supportsIfExistsBeforeTableName();
     }
 
+	protected ServiceRegistry serviceRegistry;
+    protected MetadataImplementor metadata;
+
+	@Before
+	public void setUp() {
+		serviceRegistry = ServiceRegistryBuilder.buildServiceRegistry( Environment.getProperties() );
+        metadata = (MetadataImplementor) new MetadataSources( serviceRegistry )
+                .addResource( "org/hibernate/test/schemaupdate/mapping.hbm.xml" )
+                .buildMetadata();
+        metadata.validate();
+
+		new SchemaExport().drop( EnumSet.of( TargetType.DATABASE, TargetType.STDOUT ), metadata );
+	}
+
+	@After
+	public void tearDown() {
+		ServiceRegistryBuilder.destroy( serviceRegistry );
+		serviceRegistry = null;
+	}
+
     @Test
     public void testCreateAndDropOnlyType() {
-        Configuration cfg = new Configuration();
-        cfg.addResource( MAPPING );
-        SchemaExport schemaExport = createSchemaExport( cfg );
+		final SchemaExport schemaExport = new SchemaExport();
+
         // create w/o dropping first; (OK because tables don't exist yet
-        schemaExport.execute( false, true, false, true );
-        if ( doesDialectSupportDropTableIfExist() ) {
-            assertEquals( 0, schemaExport.getExceptions().size() );
-        }
-        else {
-            assertEquals( 2, schemaExport.getExceptions().size() );
-        }
-        // create w/o dropping again; should be an exception for each table
-        // (2 total) because the tables exist already
-//        assertEquals( 0, schemaExport.getExceptions().size() );
-        schemaExport.execute( false, true, false, true );
-        assertEquals( 2, schemaExport.getExceptions().size() );
+        schemaExport.execute( EnumSet.of( TargetType.DATABASE ), SchemaExport.Action.CREATE, metadata );
+        assertEquals( 0, schemaExport.getExceptions().size() );
+
+        // create w/o dropping again; should cause an exception because the tables exist already
+		schemaExport.execute( EnumSet.of( TargetType.DATABASE ), SchemaExport.Action.CREATE, metadata );
+        assertEquals( 1, schemaExport.getExceptions().size() );
+
         // drop tables only
-        schemaExport.execute( false, true, true, false );
+		schemaExport.execute( EnumSet.of( TargetType.DATABASE ), SchemaExport.Action.DROP, metadata );
         assertEquals( 0, schemaExport.getExceptions().size() );
     }
 
     @Test
     public void testBothType() {
-        Configuration cfg = new Configuration();
-        cfg.addResource( MAPPING );
-        SchemaExport schemaExport = createSchemaExport( cfg );
+		final SchemaExport schemaExport = new SchemaExport();
+
         // drop before create (nothing to drop yeT)
-        schemaExport.execute( false, true, false, false );
+        schemaExport.execute( EnumSet.of( TargetType.DATABASE ), SchemaExport.Action.DROP, metadata );
         if ( doesDialectSupportDropTableIfExist() ) {
             assertEquals( 0, schemaExport.getExceptions().size() );
         }
         else {
-            assertEquals( 2, schemaExport.getExceptions().size() );
+            assertEquals( 1, schemaExport.getExceptions().size() );
         }
-        // drop before crete again (this time drops the tables before re-creating)
-        schemaExport.execute( false, true, false, false );
-        assertEquals( 0, schemaExport.getExceptions().size() );
-        // drop tables
-        schemaExport.execute( false, true, true, false );
+
+        // drop before create again (this time drops the tables before re-creating)
+		schemaExport.execute( EnumSet.of( TargetType.DATABASE ), SchemaExport.Action.BOTH, metadata );
+		int exceptionCount = schemaExport.getExceptions().size();
+		if ( doesDialectSupportDropTableIfExist() ) {
+			assertEquals( 0,  exceptionCount);
+		}
+
+		// drop tables
+		schemaExport.execute( EnumSet.of( TargetType.DATABASE ), SchemaExport.Action.DROP, metadata );
         assertEquals( 0, schemaExport.getExceptions().size() );
     }
 
     @Test
+    public void testGenerateDdlToFile() {
+		final SchemaExport schemaExport = new SchemaExport();
+
+        java.io.File outFile = new java.io.File("schema.ddl");
+        schemaExport.setOutputFile( outFile.getPath() );
+
+        // do not script to console or export to database
+        schemaExport.execute( EnumSet.of( TargetType.SCRIPT ), SchemaExport.Action.DROP, metadata );
+        if ( doesDialectSupportDropTableIfExist() && schemaExport.getExceptions().size() > 0 ) {
+            assertEquals( 2, schemaExport.getExceptions().size() );
+        }
+        assertTrue( outFile.exists() );
+
+        //check file is not empty
+        assertTrue( outFile.length() > 0 );
+        outFile.delete();
+    }
+
+    @Test
     public void testCreateAndDrop() {
-        Configuration cfg = new Configuration();
-        cfg.addResource( MAPPING );
-        SchemaExport schemaExport = createSchemaExport( cfg );
+		final SchemaExport schemaExport = new SchemaExport();
+
         // should drop before creating, but tables don't exist yet
-        schemaExport.create( true, true );
-        assertEquals( 0, schemaExport.getExceptions().size() );
+        schemaExport.create( EnumSet.of( TargetType.DATABASE ), metadata );
+		if ( doesDialectSupportDropTableIfExist() ) {
+			assertEquals( 0, schemaExport.getExceptions().size() );
+		}
+		else {
+			assertEquals( 1, schemaExport.getExceptions().size() );
+		}
         // call create again; it should drop tables before re-creating
-        schemaExport.create( true, true );
+		schemaExport.create( EnumSet.of( TargetType.DATABASE ), metadata );
         assertEquals( 0, schemaExport.getExceptions().size() );
         // drop the tables
-        schemaExport.drop( true, true );
+		schemaExport.drop( EnumSet.of( TargetType.DATABASE ), metadata );
         assertEquals( 0, schemaExport.getExceptions().size() );
     }
+
+	@Test
+	@TestForIssue(jiraKey = "HHH-10678")
+	@RequiresDialectFeature( value = DialectChecks.SupportSchemaCreation.class)
+	public void testHibernateMappingSchemaPropertyIsNotIgnored() throws Exception {
+		File output = File.createTempFile( "update_script", ".sql" );
+		output.deleteOnExit();
+
+		final MetadataImplementor metadata = (MetadataImplementor) new MetadataSources( serviceRegistry )
+				.addResource( "org/hibernate/test/schemaupdate/mapping2.hbm.xml" )
+				.buildMetadata();
+		metadata.validate();
+
+		final SchemaExport schemaExport = new SchemaExport();
+		schemaExport.setOutputFile( output.getAbsolutePath() );
+		schemaExport.execute( EnumSet.of( TargetType.SCRIPT ), SchemaExport.Action.CREATE, metadata );
+
+		String fileContent = new String( Files.readAllBytes( output.toPath() ) );
+		Pattern fileContentPattern = Pattern.compile( "create( (column|row))? table schema1.version" );
+		Matcher fileContentMatcher = fileContentPattern.matcher( fileContent.toLowerCase() );
+		assertThat( fileContent, fileContentMatcher.find(), is( true ) );
+	}
 }

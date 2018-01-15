@@ -1,25 +1,8 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2011, Red Hat Inc. or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Inc.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.cache.ehcache.management.impl;
 
@@ -44,7 +27,7 @@ import org.hibernate.SessionFactory;
  *
  * @author <a href="mailto:asanoujam@terracottatech.com">Abhishek Sanoujam</a>
  */
-public class EhcacheHibernate extends BaseEmitterBean implements EhcacheHibernateMBean {
+public class EhcacheHibernate extends AbstractEmitterBean implements EhcacheHibernateMBean {
 	private static final MBeanNotificationInfo NOTIFICATION_INFO;
 
 	private final AtomicBoolean statsEnabled = new AtomicBoolean( true );
@@ -52,7 +35,7 @@ public class EhcacheHibernate extends BaseEmitterBean implements EhcacheHibernat
 	private volatile HibernateStats hibernateStats = NullHibernateStats.INSTANCE;
 
 	static {
-		final String[] notifTypes = new String[] { };
+		final String[] notifTypes = new String[] {};
 		final String name = Notification.class.getName();
 		final String description = "Ehcache Hibernate Statistics Event";
 		NOTIFICATION_INFO = new MBeanNotificationInfo( notifTypes, name, description );
@@ -63,7 +46,7 @@ public class EhcacheHibernate extends BaseEmitterBean implements EhcacheHibernat
 	 *
 	 * @param manager the backing {@link CacheManager}
 	 *
-	 * @throws NotCompliantMBeanException
+	 * @throws NotCompliantMBeanException if bean doesn't comply
 	 */
 	public EhcacheHibernate(CacheManager manager) throws NotCompliantMBeanException {
 		super( EhcacheHibernateMBean.class );
@@ -72,6 +55,7 @@ public class EhcacheHibernate extends BaseEmitterBean implements EhcacheHibernat
 
 	/**
 	 * Enable hibernate statistics with the input session factory
+	 * @param sessionFactory the session factory to enable stats for
 	 */
 	public void enableHibernateStatistics(SessionFactory sessionFactory) {
 		try {
@@ -85,6 +69,7 @@ public class EhcacheHibernate extends BaseEmitterBean implements EhcacheHibernat
 	/**
 	 * {@inheritDoc}
 	 */
+	@Override
 	public boolean isHibernateStatisticsSupported() {
 		return hibernateStats instanceof HibernateStatsImpl;
 	}
@@ -92,13 +77,12 @@ public class EhcacheHibernate extends BaseEmitterBean implements EhcacheHibernat
 	/**
 	 * {@inheritDoc}
 	 */
+	@Override
 	public void setStatisticsEnabled(boolean flag) {
 		if ( flag ) {
-			ehcacheStats.enableStats();
 			hibernateStats.enableStats();
 		}
 		else {
-			ehcacheStats.disableStats();
 			hibernateStats.disableStats();
 		}
 		statsEnabled.set( flag );
@@ -108,6 +92,7 @@ public class EhcacheHibernate extends BaseEmitterBean implements EhcacheHibernat
 	/**
 	 * {@inheritDoc}
 	 */
+	@Override
 	public boolean isStatisticsEnabled() {
 		return statsEnabled.get();
 	}
@@ -115,14 +100,15 @@ public class EhcacheHibernate extends BaseEmitterBean implements EhcacheHibernat
 	/**
 	 * {@inheritDoc}
 	 */
+	@Override
 	public void clearStats() {
-		ehcacheStats.clearStats();
 		hibernateStats.clearStats();
 	}
 
 	/**
 	 * {@inheritDoc}
 	 */
+	@Override
 	public void disableStats() {
 		setStatisticsEnabled( false );
 	}
@@ -130,6 +116,7 @@ public class EhcacheHibernate extends BaseEmitterBean implements EhcacheHibernat
 	/**
 	 * {@inheritDoc}
 	 */
+	@Override
 	public void enableStats() {
 		setStatisticsEnabled( true );
 	}
@@ -137,6 +124,7 @@ public class EhcacheHibernate extends BaseEmitterBean implements EhcacheHibernat
 	/**
 	 * {@inheritDoc}
 	 */
+	@Override
 	public void flushRegionCache(String region) {
 		ehcacheStats.flushRegionCache( region );
 		sendNotification( HibernateStats.CACHE_REGION_FLUSHED, region );
@@ -145,6 +133,7 @@ public class EhcacheHibernate extends BaseEmitterBean implements EhcacheHibernat
 	/**
 	 * {@inheritDoc}
 	 */
+	@Override
 	public void flushRegionCaches() {
 		ehcacheStats.flushRegionCaches();
 		sendNotification( HibernateStats.CACHE_FLUSHED );
@@ -153,6 +142,7 @@ public class EhcacheHibernate extends BaseEmitterBean implements EhcacheHibernat
 	/**
 	 * {@inheritDoc}
 	 */
+	@Override
 	public String generateActiveConfigDeclaration() {
 		return ehcacheStats.generateActiveConfigDeclaration();
 	}
@@ -160,6 +150,7 @@ public class EhcacheHibernate extends BaseEmitterBean implements EhcacheHibernat
 	/**
 	 * {@inheritDoc}
 	 */
+	@Override
 	public String generateActiveConfigDeclaration(String region) {
 		return ehcacheStats.generateActiveConfigDeclaration( region );
 	}
@@ -167,6 +158,7 @@ public class EhcacheHibernate extends BaseEmitterBean implements EhcacheHibernat
 	/**
 	 * {@inheritDoc}
 	 */
+	@Override
 	public long getCacheHitCount() {
 		return ehcacheStats.getCacheHitCount();
 	}
@@ -174,6 +166,7 @@ public class EhcacheHibernate extends BaseEmitterBean implements EhcacheHibernat
 	/**
 	 * {@inheritDoc}
 	 */
+	@Override
 	public double getCacheHitRate() {
 		return ehcacheStats.getCacheHitRate();
 	}
@@ -181,6 +174,7 @@ public class EhcacheHibernate extends BaseEmitterBean implements EhcacheHibernat
 	/**
 	 * {@inheritDoc}
 	 */
+	@Override
 	public long getCacheHitSample() {
 		return ehcacheStats.getCacheHitSample();
 	}
@@ -188,6 +182,7 @@ public class EhcacheHibernate extends BaseEmitterBean implements EhcacheHibernat
 	/**
 	 * {@inheritDoc}
 	 */
+	@Override
 	public long getCacheMissCount() {
 		return ehcacheStats.getCacheMissCount();
 	}
@@ -195,6 +190,7 @@ public class EhcacheHibernate extends BaseEmitterBean implements EhcacheHibernat
 	/**
 	 * {@inheritDoc}
 	 */
+	@Override
 	public double getCacheMissRate() {
 		return ehcacheStats.getCacheMissRate();
 	}
@@ -202,6 +198,7 @@ public class EhcacheHibernate extends BaseEmitterBean implements EhcacheHibernat
 	/**
 	 * {@inheritDoc}
 	 */
+	@Override
 	public long getCacheMissSample() {
 		return ehcacheStats.getCacheMissSample();
 	}
@@ -209,6 +206,7 @@ public class EhcacheHibernate extends BaseEmitterBean implements EhcacheHibernat
 	/**
 	 * {@inheritDoc}
 	 */
+	@Override
 	public long getCachePutCount() {
 		return ehcacheStats.getCachePutCount();
 	}
@@ -216,6 +214,7 @@ public class EhcacheHibernate extends BaseEmitterBean implements EhcacheHibernat
 	/**
 	 * {@inheritDoc}
 	 */
+	@Override
 	public double getCachePutRate() {
 		return ehcacheStats.getCachePutRate();
 	}
@@ -223,6 +222,7 @@ public class EhcacheHibernate extends BaseEmitterBean implements EhcacheHibernat
 	/**
 	 * {@inheritDoc}
 	 */
+	@Override
 	public long getCachePutSample() {
 		return ehcacheStats.getCachePutSample();
 	}
@@ -230,6 +230,7 @@ public class EhcacheHibernate extends BaseEmitterBean implements EhcacheHibernat
 	/**
 	 * {@inheritDoc}
 	 */
+	@Override
 	public TabularData getCacheRegionStats() {
 		return hibernateStats.getCacheRegionStats();
 	}
@@ -237,6 +238,7 @@ public class EhcacheHibernate extends BaseEmitterBean implements EhcacheHibernat
 	/**
 	 * {@inheritDoc}
 	 */
+	@Override
 	public long getCloseStatementCount() {
 		return hibernateStats.getCloseStatementCount();
 	}
@@ -244,6 +246,7 @@ public class EhcacheHibernate extends BaseEmitterBean implements EhcacheHibernat
 	/**
 	 * {@inheritDoc}
 	 */
+	@Override
 	public TabularData getCollectionStats() {
 		return hibernateStats.getCollectionStats();
 	}
@@ -251,6 +254,7 @@ public class EhcacheHibernate extends BaseEmitterBean implements EhcacheHibernat
 	/**
 	 * {@inheritDoc}
 	 */
+	@Override
 	public long getConnectCount() {
 		return hibernateStats.getConnectCount();
 	}
@@ -258,6 +262,7 @@ public class EhcacheHibernate extends BaseEmitterBean implements EhcacheHibernat
 	/**
 	 * {@inheritDoc}
 	 */
+	@Override
 	public TabularData getEntityStats() {
 		return hibernateStats.getEntityStats();
 	}
@@ -265,6 +270,7 @@ public class EhcacheHibernate extends BaseEmitterBean implements EhcacheHibernat
 	/**
 	 * {@inheritDoc}
 	 */
+	@Override
 	public long getFlushCount() {
 		return hibernateStats.getFlushCount();
 	}
@@ -272,6 +278,7 @@ public class EhcacheHibernate extends BaseEmitterBean implements EhcacheHibernat
 	/**
 	 * {@inheritDoc}
 	 */
+	@Override
 	public long getOptimisticFailureCount() {
 		return hibernateStats.getOptimisticFailureCount();
 	}
@@ -279,6 +286,7 @@ public class EhcacheHibernate extends BaseEmitterBean implements EhcacheHibernat
 	/**
 	 * {@inheritDoc}
 	 */
+	@Override
 	public String getOriginalConfigDeclaration() {
 		return ehcacheStats.getOriginalConfigDeclaration();
 	}
@@ -286,6 +294,7 @@ public class EhcacheHibernate extends BaseEmitterBean implements EhcacheHibernat
 	/**
 	 * {@inheritDoc}
 	 */
+	@Override
 	public String getOriginalConfigDeclaration(String region) {
 		return ehcacheStats.getOriginalConfigDeclaration( region );
 	}
@@ -293,6 +302,7 @@ public class EhcacheHibernate extends BaseEmitterBean implements EhcacheHibernat
 	/**
 	 * {@inheritDoc}
 	 */
+	@Override
 	public long getPrepareStatementCount() {
 		return hibernateStats.getPrepareStatementCount();
 	}
@@ -300,6 +310,7 @@ public class EhcacheHibernate extends BaseEmitterBean implements EhcacheHibernat
 	/**
 	 * {@inheritDoc}
 	 */
+	@Override
 	public long getQueryExecutionCount() {
 		return hibernateStats.getQueryExecutionCount();
 	}
@@ -307,6 +318,7 @@ public class EhcacheHibernate extends BaseEmitterBean implements EhcacheHibernat
 	/**
 	 * {@inheritDoc}
 	 */
+	@Override
 	public double getQueryExecutionRate() {
 		return hibernateStats.getQueryExecutionRate();
 	}
@@ -314,6 +326,7 @@ public class EhcacheHibernate extends BaseEmitterBean implements EhcacheHibernat
 	/**
 	 * {@inheritDoc}
 	 */
+	@Override
 	public long getQueryExecutionSample() {
 		return hibernateStats.getQueryExecutionSample();
 	}
@@ -321,6 +334,7 @@ public class EhcacheHibernate extends BaseEmitterBean implements EhcacheHibernat
 	/**
 	 * {@inheritDoc}
 	 */
+	@Override
 	public TabularData getQueryStats() {
 		return hibernateStats.getQueryStats();
 	}
@@ -328,6 +342,7 @@ public class EhcacheHibernate extends BaseEmitterBean implements EhcacheHibernat
 	/**
 	 * {@inheritDoc}
 	 */
+	@Override
 	public Map<String, Map<String, Object>> getRegionCacheAttributes() {
 		return ehcacheStats.getRegionCacheAttributes();
 	}
@@ -335,6 +350,7 @@ public class EhcacheHibernate extends BaseEmitterBean implements EhcacheHibernat
 	/**
 	 * {@inheritDoc}
 	 */
+	@Override
 	public Map<String, Object> getRegionCacheAttributes(String regionName) {
 		return ehcacheStats.getRegionCacheAttributes( regionName );
 	}
@@ -342,6 +358,7 @@ public class EhcacheHibernate extends BaseEmitterBean implements EhcacheHibernat
 	/**
 	 * {@inheritDoc}
 	 */
+	@Override
 	public int getRegionCacheMaxTTISeconds(String region) {
 		return ehcacheStats.getRegionCacheMaxTTISeconds( region );
 	}
@@ -349,6 +366,7 @@ public class EhcacheHibernate extends BaseEmitterBean implements EhcacheHibernat
 	/**
 	 * {@inheritDoc}
 	 */
+	@Override
 	public int getRegionCacheMaxTTLSeconds(String region) {
 		return ehcacheStats.getRegionCacheMaxTTLSeconds( region );
 	}
@@ -356,6 +374,7 @@ public class EhcacheHibernate extends BaseEmitterBean implements EhcacheHibernat
 	/**
 	 * {@inheritDoc}
 	 */
+	@Override
 	public int getRegionCacheOrphanEvictionPeriod(String region) {
 		return ehcacheStats.getRegionCacheOrphanEvictionPeriod( region );
 	}
@@ -363,6 +382,7 @@ public class EhcacheHibernate extends BaseEmitterBean implements EhcacheHibernat
 	/**
 	 * {@inheritDoc}
 	 */
+	@Override
 	public Map<String, int[]> getRegionCacheSamples() {
 		return ehcacheStats.getRegionCacheSamples();
 	}
@@ -370,6 +390,7 @@ public class EhcacheHibernate extends BaseEmitterBean implements EhcacheHibernat
 	/**
 	 * {@inheritDoc}
 	 */
+	@Override
 	public int getRegionCacheTargetMaxInMemoryCount(String region) {
 		return ehcacheStats.getRegionCacheTargetMaxInMemoryCount( region );
 	}
@@ -377,6 +398,7 @@ public class EhcacheHibernate extends BaseEmitterBean implements EhcacheHibernat
 	/**
 	 * {@inheritDoc}
 	 */
+	@Override
 	public int getRegionCacheTargetMaxTotalCount(String region) {
 		return ehcacheStats.getRegionCacheTargetMaxTotalCount( region );
 	}
@@ -384,6 +406,7 @@ public class EhcacheHibernate extends BaseEmitterBean implements EhcacheHibernat
 	/**
 	 * {@inheritDoc}
 	 */
+	@Override
 	public long getSessionCloseCount() {
 		return hibernateStats.getSessionCloseCount();
 	}
@@ -391,6 +414,7 @@ public class EhcacheHibernate extends BaseEmitterBean implements EhcacheHibernat
 	/**
 	 * {@inheritDoc}
 	 */
+	@Override
 	public long getSessionOpenCount() {
 		return hibernateStats.getSessionOpenCount();
 	}
@@ -398,6 +422,7 @@ public class EhcacheHibernate extends BaseEmitterBean implements EhcacheHibernat
 	/**
 	 * {@inheritDoc}
 	 */
+	@Override
 	public long getSuccessfulTransactionCount() {
 		return hibernateStats.getSuccessfulTransactionCount();
 	}
@@ -405,6 +430,7 @@ public class EhcacheHibernate extends BaseEmitterBean implements EhcacheHibernat
 	/**
 	 * {@inheritDoc}
 	 */
+	@Override
 	public String[] getTerracottaHibernateCacheRegionNames() {
 		return ehcacheStats.getTerracottaHibernateCacheRegionNames();
 	}
@@ -412,6 +438,7 @@ public class EhcacheHibernate extends BaseEmitterBean implements EhcacheHibernat
 	/**
 	 * {@inheritDoc}
 	 */
+	@Override
 	public long getTransactionCount() {
 		return hibernateStats.getTransactionCount();
 	}
@@ -419,6 +446,7 @@ public class EhcacheHibernate extends BaseEmitterBean implements EhcacheHibernat
 	/**
 	 * {@inheritDoc}
 	 */
+	@Override
 	public boolean isRegionCacheEnabled(String region) {
 		return ehcacheStats.isRegionCacheEnabled( region );
 	}
@@ -426,6 +454,7 @@ public class EhcacheHibernate extends BaseEmitterBean implements EhcacheHibernat
 	/**
 	 * {@inheritDoc}
 	 */
+	@Override
 	public void setRegionCachesEnabled(boolean enabled) {
 		ehcacheStats.setRegionCachesEnabled( enabled );
 		sendNotification( HibernateStats.CACHE_ENABLED, enabled );
@@ -434,6 +463,7 @@ public class EhcacheHibernate extends BaseEmitterBean implements EhcacheHibernat
 	/**
 	 * {@inheritDoc}
 	 */
+	@Override
 	public void setRegionCacheEnabled(String region, boolean enabled) {
 		ehcacheStats.setRegionCacheEnabled( region, enabled );
 		sendNotification( HibernateStats.CACHE_REGION_CHANGED, getRegionCacheAttributes( region ), region );
@@ -442,6 +472,7 @@ public class EhcacheHibernate extends BaseEmitterBean implements EhcacheHibernat
 	/**
 	 * {@inheritDoc}
 	 */
+	@Override
 	public boolean isRegionCacheLoggingEnabled(String region) {
 		return ehcacheStats.isRegionCacheLoggingEnabled( region );
 	}
@@ -449,6 +480,7 @@ public class EhcacheHibernate extends BaseEmitterBean implements EhcacheHibernat
 	/**
 	 * {@inheritDoc}
 	 */
+	@Override
 	public boolean isRegionCacheOrphanEvictionEnabled(String region) {
 		return ehcacheStats.isRegionCacheOrphanEvictionEnabled( region );
 	}
@@ -456,6 +488,7 @@ public class EhcacheHibernate extends BaseEmitterBean implements EhcacheHibernat
 	/**
 	 * {@inheritDoc}
 	 */
+	@Override
 	public boolean isRegionCachesEnabled() {
 		return ehcacheStats.isRegionCachesEnabled();
 	}
@@ -463,6 +496,7 @@ public class EhcacheHibernate extends BaseEmitterBean implements EhcacheHibernat
 	/**
 	 * {@inheritDoc}
 	 */
+	@Override
 	public boolean isTerracottaHibernateCache(String region) {
 		return ehcacheStats.isTerracottaHibernateCache( region );
 	}
@@ -470,6 +504,7 @@ public class EhcacheHibernate extends BaseEmitterBean implements EhcacheHibernat
 	/**
 	 * {@inheritDoc}
 	 */
+	@Override
 	public void setRegionCacheLoggingEnabled(String region, boolean loggingEnabled) {
 		ehcacheStats.setRegionCacheLoggingEnabled( region, loggingEnabled );
 		sendNotification( HibernateStats.CACHE_REGION_CHANGED, getRegionCacheAttributes( region ), region );
@@ -478,6 +513,7 @@ public class EhcacheHibernate extends BaseEmitterBean implements EhcacheHibernat
 	/**
 	 * {@inheritDoc}
 	 */
+	@Override
 	public void setRegionCacheMaxTTISeconds(String region, int maxTTISeconds) {
 		ehcacheStats.setRegionCacheMaxTTISeconds( region, maxTTISeconds );
 		sendNotification( HibernateStats.CACHE_REGION_CHANGED, getRegionCacheAttributes( region ), region );
@@ -486,6 +522,7 @@ public class EhcacheHibernate extends BaseEmitterBean implements EhcacheHibernat
 	/**
 	 * {@inheritDoc}
 	 */
+	@Override
 	public void setRegionCacheMaxTTLSeconds(String region, int maxTTLSeconds) {
 		ehcacheStats.setRegionCacheMaxTTLSeconds( region, maxTTLSeconds );
 		sendNotification( HibernateStats.CACHE_REGION_CHANGED, getRegionCacheAttributes( region ), region );
@@ -494,6 +531,7 @@ public class EhcacheHibernate extends BaseEmitterBean implements EhcacheHibernat
 	/**
 	 * {@inheritDoc}
 	 */
+	@Override
 	public void setRegionCacheTargetMaxInMemoryCount(String region, int targetMaxInMemoryCount) {
 		ehcacheStats.setRegionCacheTargetMaxInMemoryCount( region, targetMaxInMemoryCount );
 		sendNotification( HibernateStats.CACHE_REGION_CHANGED, getRegionCacheAttributes( region ), region );
@@ -502,6 +540,7 @@ public class EhcacheHibernate extends BaseEmitterBean implements EhcacheHibernat
 	/**
 	 * {@inheritDoc}
 	 */
+	@Override
 	public void setRegionCacheTargetMaxTotalCount(String region, int targetMaxTotalCount) {
 		ehcacheStats.setRegionCacheTargetMaxTotalCount( region, targetMaxTotalCount );
 		sendNotification( HibernateStats.CACHE_REGION_CHANGED, getRegionCacheAttributes( region ), region );
@@ -512,6 +551,7 @@ public class EhcacheHibernate extends BaseEmitterBean implements EhcacheHibernat
 	 *
 	 * @see EhcacheStats#getNumberOfElementsInMemory(java.lang.String)
 	 */
+	@Override
 	public int getNumberOfElementsInMemory(String region) {
 		return ehcacheStats.getNumberOfElementsInMemory( region );
 	}
@@ -521,6 +561,7 @@ public class EhcacheHibernate extends BaseEmitterBean implements EhcacheHibernat
 	 *
 	 * @see EhcacheStats#getNumberOfElementsInMemory(java.lang.String)
 	 */
+	@Override
 	public int getNumberOfElementsOffHeap(String region) {
 		return ehcacheStats.getNumberOfElementsOffHeap( region );
 	}
@@ -530,6 +571,7 @@ public class EhcacheHibernate extends BaseEmitterBean implements EhcacheHibernat
 	 *
 	 * @see EhcacheStats#getNumberOfElementsOnDisk(java.lang.String)
 	 */
+	@Override
 	public int getNumberOfElementsOnDisk(String region) {
 		return ehcacheStats.getNumberOfElementsOnDisk( region );
 	}
@@ -539,6 +581,7 @@ public class EhcacheHibernate extends BaseEmitterBean implements EhcacheHibernat
 	 *
 	 * @see EhcacheStats#getMaxGetTimeMillis()
 	 */
+	@Override
 	public long getMaxGetTimeMillis() {
 		return ehcacheStats.getMaxGetTimeMillis();
 	}
@@ -548,6 +591,7 @@ public class EhcacheHibernate extends BaseEmitterBean implements EhcacheHibernat
 	 *
 	 * @see EhcacheStats#getMaxGetTimeMillis(java.lang.String)
 	 */
+	@Override
 	public long getMaxGetTimeMillis(String cacheName) {
 		return ehcacheStats.getMaxGetTimeMillis( cacheName );
 	}
@@ -557,6 +601,7 @@ public class EhcacheHibernate extends BaseEmitterBean implements EhcacheHibernat
 	 *
 	 * @see EhcacheStats#getMinGetTimeMillis()
 	 */
+	@Override
 	public long getMinGetTimeMillis() {
 		return ehcacheStats.getMinGetTimeMillis();
 	}
@@ -566,6 +611,7 @@ public class EhcacheHibernate extends BaseEmitterBean implements EhcacheHibernat
 	 *
 	 * @see EhcacheStats#getMinGetTimeMillis(java.lang.String)
 	 */
+	@Override
 	public long getMinGetTimeMillis(String cacheName) {
 		return ehcacheStats.getMinGetTimeMillis( cacheName );
 	}
@@ -575,6 +621,7 @@ public class EhcacheHibernate extends BaseEmitterBean implements EhcacheHibernat
 	 *
 	 * @see EhcacheStats#getAverageGetTimeMillis(java.lang.String)
 	 */
+	@Override
 	public float getAverageGetTimeMillis(String region) {
 		return ehcacheStats.getAverageGetTimeMillis( region );
 	}
@@ -588,7 +635,9 @@ public class EhcacheHibernate extends BaseEmitterBean implements EhcacheHibernat
 	}
 
 	/**
-	 * @see BaseEmitterBean#getNotificationInfo()
+	 * {@inheritDoc}
+	 *
+	 * @see AbstractEmitterBean#getNotificationInfo()
 	 */
 	@Override
 	public MBeanNotificationInfo[] getNotificationInfo() {

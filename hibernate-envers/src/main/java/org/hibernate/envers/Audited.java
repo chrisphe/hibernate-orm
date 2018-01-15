@@ -1,27 +1,11 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2008, Red Hat Middleware LLC or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Middleware LLC.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.envers;
+
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
@@ -30,6 +14,7 @@ import java.lang.annotation.Target;
 /**
  * When applied to a class, indicates that all of its properties should be audited.
  * When applied to a field, indicates that this field should be audited.
+ *
  * @author Adam Warski (adam at warski dot org)
  * @author Tomasz Bech
  * @author Lukasz Antoniak (lukasz dot antoniak at gmail dot com)
@@ -38,33 +23,45 @@ import java.lang.annotation.Target;
 @Retention(RetentionPolicy.RUNTIME)
 @Target({ElementType.TYPE, ElementType.METHOD, ElementType.FIELD})
 public @interface Audited {
-    ModificationStore modStore()    default ModificationStore.FULL;
+	/**
+	 * Specifies modification store to use
+	 * @deprecated since 5.2, to be removed in 6.0 with no replacement.
+	 */
+	@Deprecated
+	ModificationStore modStore() default ModificationStore.FULL;
 
 	/**
-	 * @return Specifies if the entity that is the target of the relation should be audited or not. If not, then when
+	 * Specifies if the entity that is the target of the relation should be audited or not. If not, then when
 	 * reading a historic version an audited entity, the relation will always point to the "current" entity.
 	 * This is useful for dictionary-like entities, which don't change and don't need to be audited.
 	 */
-    RelationTargetAuditMode targetAuditMode() default RelationTargetAuditMode.AUDITED;
+	RelationTargetAuditMode targetAuditMode() default RelationTargetAuditMode.AUDITED;
 
-    /**
-     * @return Specifies the superclasses for which properties should be audited, even if the superclasses are not
-     * annotated with {@link Audited}. Causes all properties of the listed classes to be audited, just as if the
-     * classes had {@link Audited} annotation applied on the class level.
-     *
-     * The scope of this functionality is limited to the class hierarchy of the annotated entity.
-     *
-     * If a parent type lists any of its parent types using this attribute, all properties in the specified classes
-     * will also be audited.
-     *
-     * @deprecated Use {@code @AuditOverride(forClass=SomeEntity.class)} instead.
-     */
-    Class[] auditParents() default {};
+	/**
+	 * Specifies the superclasses for which properties should be audited, even if the superclasses are not
+	 * annotated with {@link Audited}. Causes all properties of the listed classes to be audited, just as if the
+	 * classes had {@link Audited} annotation applied on the class level.
+	 * <p/>
+	 * The scope of this functionality is limited to the class hierarchy of the annotated entity.
+	 * <p/>
+	 * If a parent type lists any of its parent types using this attribute, all properties in the specified classes
+	 * will also be audited.
+	 *
+	 * @deprecated Use {@code @AuditOverride(forClass=SomeEntity.class)} instead.
+	 */
+	@Deprecated
+	Class[] auditParents() default {};
 
-    /**
-     * @return Should a modification flag be stored for each property in the annotated class or for the annotated
-     * property. The flag stores information if a property has been changed at a given revision.
-     * This can be used for example in queries.
-     */
+	/**
+	 * Should a modification flag be stored for each property in the annotated class or for the annotated
+	 * property. The flag stores information if a property has been changed at a given revision.
+	 * This can be used for example in queries.
+	 */
 	boolean withModifiedFlag() default false;
+
+	/**
+	 * The column name of the modified field. Analogous to the name attribute of the @{@link javax.persistence.Column}
+	 * annotation. Ignored if withModifiedFlag is false.
+	 */
+	String modifiedColumnName() default "";
 }

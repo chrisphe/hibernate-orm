@@ -1,43 +1,47 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2010, Red Hat Inc. or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Inc.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.dialect;
 
 import java.sql.SQLException;
 import java.sql.Types;
 
-import org.jboss.logging.Logger;
-
+import org.hibernate.JDBCException;
+import org.hibernate.PessimisticLockException;
+import org.hibernate.boot.TempTableDdlTransactionHandling;
 import org.hibernate.cfg.AvailableSettings;
 import org.hibernate.dialect.function.AvgWithArgumentCastFunction;
 import org.hibernate.dialect.function.NoArgSQLFunction;
 import org.hibernate.dialect.function.StandardSQLFunction;
 import org.hibernate.dialect.function.VarArgsSQLFunction;
+import org.hibernate.dialect.hint.IndexQueryHintHandler;
+import org.hibernate.dialect.identity.H2IdentityColumnSupport;
+import org.hibernate.dialect.identity.IdentityColumnSupport;
+import org.hibernate.dialect.pagination.AbstractLimitHandler;
+import org.hibernate.dialect.pagination.LimitHandler;
+import org.hibernate.dialect.pagination.LimitHelper;
+import org.hibernate.engine.spi.RowSelection;
+import org.hibernate.exception.ConstraintViolationException;
+import org.hibernate.exception.LockAcquisitionException;
+import org.hibernate.exception.spi.SQLExceptionConversionDelegate;
 import org.hibernate.exception.spi.TemplatedViolatedConstraintNameExtracter;
 import org.hibernate.exception.spi.ViolatedConstraintNameExtracter;
+import org.hibernate.hql.spi.id.IdTableSupportStandardImpl;
+import org.hibernate.hql.spi.id.MultiTableBulkIdStrategy;
+import org.hibernate.hql.spi.id.local.AfterUseAction;
+import org.hibernate.hql.spi.id.local.LocalTemporaryTableBulkIdStrategy;
 import org.hibernate.internal.CoreMessageLogger;
+import org.hibernate.internal.util.JdbcExceptionHelper;
 import org.hibernate.internal.util.ReflectHelper;
+import org.hibernate.tool.schema.extract.internal.SequenceInformationExtractorH2DatabaseImpl;
+import org.hibernate.tool.schema.extract.internal.SequenceInformationExtractorLegacyImpl;
+import org.hibernate.tool.schema.extract.spi.SequenceInformationExtractor;
 import org.hibernate.type.StandardBasicTypes;
+
+import org.jboss.logging.Logger;
 
 /**
  * A dialect compatible with the H2 database.
@@ -45,25 +49,51 @@ import org.hibernate.type.StandardBasicTypes;
  * @author Thomas Mueller
  */
 public class H2Dialect extends Dialect {
+	private static final CoreMessageLogger LOG = Logger.getMessageLogger(
+			CoreMessageLogger.class,
+			H2Dialect.class.getName()
+	);
 
-    private static final CoreMessageLogger LOG = Logger.getMessageLogger(CoreMessageLogger.class, H2Dialect.class.getName());
+	private static final AbstractLimitHandler LIMIT_HANDLER = new AbstractLimitHandler() {
+		@Override
+		public String processSql(String sql, RowSelection selection) {
+			final boolean hasOffset = LimitHelper.hasFirstRow( selection );
+			return sql + (hasOffset ? " limit ? offset ?" : " limit ?");
+		}
+
+		@Override
+		public boolean supportsLimit() {
+			return true;
+		}
+
+		@Override
+		public boolean bindLimitParametersInReverseOrder() {
+			return true;
+		}
+	};
 
 	private final String querySequenceString;
+	private final SequenceInformationExtractor sequenceInformationExtractor;
 
+	/**
+	 * Constructs a H2Dialect
+	 */
 	public H2Dialect() {
 		super();
 
 		String querySequenceString = "select sequence_name from information_schema.sequences";
+		SequenceInformationExtractor sequenceInformationExtractor = SequenceInformationExtractorH2DatabaseImpl.INSTANCE;
 		try {
 			// HHH-2300
 			final Class h2ConstantsClass = ReflectHelper.classForName( "org.h2.engine.Constants" );
-			final int majorVersion = ( Integer ) h2ConstantsClass.getDeclaredField( "VERSION_MAJOR" ).get( null );
-			final int minorVersion = ( Integer ) h2ConstantsClass.getDeclaredField( "VERSION_MINOR" ).get( null );
-			final int buildId = ( Integer ) h2ConstantsClass.getDeclaredField( "BUILD_ID" ).get( null );
+			final int majorVersion = (Integer) h2ConstantsClass.getDeclaredField( "VERSION_MAJOR" ).get( null );
+			final int minorVersion = (Integer) h2ConstantsClass.getDeclaredField( "VERSION_MINOR" ).get( null );
+			final int buildId = (Integer) h2ConstantsClass.getDeclaredField( "BUILD_ID" ).get( null );
 			if ( buildId < 32 ) {
 				querySequenceString = "select name from information_schema.sequences";
+				sequenceInformationExtractor = SequenceInformationExtractorLegacyImpl.INSTANCE;
 			}
-            if ( ! ( majorVersion > 1 || minorVersion > 2 || buildId >= 139 ) ) {
+			if ( ! ( majorVersion > 1 || minorVersion > 2 || buildId >= 139 ) ) {
 				LOG.unsupportedMultiTableBulkHqlJpaql( majorVersion, minorVersion, buildId );
 			}
 		}
@@ -74,6 +104,7 @@ public class H2Dialect extends Dialect {
 		}
 
 		this.querySequenceString = querySequenceString;
+		this.sequenceInformationExtractor = sequenceInformationExtractor;
 
 		registerColumnType( Types.BOOLEAN, "boolean" );
 		registerColumnType( Types.BIGINT, "bigint" );
@@ -87,7 +118,8 @@ public class H2Dialect extends Dialect {
 		registerColumnType( Types.FLOAT, "float" );
 		registerColumnType( Types.INTEGER, "integer" );
 		registerColumnType( Types.LONGVARBINARY, "longvarbinary" );
-		registerColumnType( Types.LONGVARCHAR, "longvarchar" );
+		// H2 does define "longvarchar", but it is a simple alias to "varchar"
+		registerColumnType( Types.LONGVARCHAR, String.format( "varchar(%d)", Integer.MAX_VALUE ) );
 		registerColumnType( Types.REAL, "real" );
 		registerColumnType( Types.SMALLINT, "smallint" );
 		registerColumnType( Types.TINYINT, "tinyint" );
@@ -185,106 +217,115 @@ public class H2Dialect extends Dialect {
 		registerFunction( "user", new NoArgSQLFunction( "user", StandardBasicTypes.STRING ) );
 
 		getDefaultProperties().setProperty( AvailableSettings.STATEMENT_BATCH_SIZE, DEFAULT_BATCH_SIZE );
-		getDefaultProperties().setProperty( AvailableSettings.NON_CONTEXTUAL_LOB_CREATION, "true" );  // http://code.google.com/p/h2database/issues/detail?id=235
+		// http://code.google.com/p/h2database/issues/detail?id=235
+		getDefaultProperties().setProperty( AvailableSettings.NON_CONTEXTUAL_LOB_CREATION, "true" );
 	}
 
+	@Override
 	public String getAddColumnString() {
 		return "add column";
 	}
 
-	public boolean supportsIdentityColumns() {
-		return true;
-	}
-
-	public String getIdentityColumnString() {
-		return "generated by default as identity"; // not null is implicit
-	}
-
-	public String getIdentitySelectString() {
-		return "call identity()";
-	}
-
-	public String getIdentityInsertString() {
-		return "null";
-	}
-
+	@Override
 	public String getForUpdateString() {
 		return " for update";
 	}
 
-	public boolean supportsUnique() {
-		return true;
+	@Override
+	public LimitHandler getLimitHandler() {
+		return LIMIT_HANDLER;
 	}
 
+	@Override
 	public boolean supportsLimit() {
 		return true;
 	}
 
+	@Override
 	public String getLimitString(String sql, boolean hasOffset) {
-		return new StringBuilder( sql.length() + 20 )
-				.append( sql )
-				.append( hasOffset ? " limit ? offset ?" : " limit ?" )
-				.toString();
+		return sql + (hasOffset ? " limit ? offset ?" : " limit ?");
 	}
 
+	@Override
 	public boolean bindLimitParametersInReverseOrder() {
 		return true;
 	}
 
+	@Override
 	public boolean bindLimitParametersFirst() {
 		return false;
 	}
 
+	@Override
 	public boolean supportsIfExistsAfterTableName() {
 		return true;
 	}
 
+	@Override
+	public boolean supportsIfExistsBeforeConstraintName() {
+		return true;
+	}
+
+	@Override
 	public boolean supportsSequences() {
 		return true;
 	}
 
+	@Override
 	public boolean supportsPooledSequences() {
 		return true;
 	}
 
+	@Override
 	public String getCreateSequenceString(String sequenceName) {
 		return "create sequence " + sequenceName;
 	}
 
+	@Override
 	public String getDropSequenceString(String sequenceName) {
-		return "drop sequence " + sequenceName;
+		return "drop sequence if exists " + sequenceName;
 	}
 
+	@Override
 	public String getSelectSequenceNextValString(String sequenceName) {
 		return "next value for " + sequenceName;
 	}
 
+	@Override
 	public String getSequenceNextValString(String sequenceName) {
 		return "call next value for " + sequenceName;
 	}
 
+	@Override
 	public String getQuerySequencesString() {
 		return querySequenceString;
 	}
 
+	@Override
+	public SequenceInformationExtractor getSequenceInformationExtractor() {
+		return sequenceInformationExtractor;
+	}
+
+	@Override
 	public ViolatedConstraintNameExtracter getViolatedConstraintNameExtracter() {
 		return EXTRACTER;
 	}
 
-	private static ViolatedConstraintNameExtracter EXTRACTER = new TemplatedViolatedConstraintNameExtracter() {
+	private static final ViolatedConstraintNameExtracter EXTRACTER = new TemplatedViolatedConstraintNameExtracter() {
 		/**
 		 * Extract the name of the violated constraint from the given SQLException.
 		 *
 		 * @param sqle The exception that was the result of the constraint violation.
 		 * @return The extracted constraint name.
 		 */
-		public String extractConstraintName(SQLException sqle) {
+		@Override
+		protected String doExtractConstraintName(SQLException sqle) throws NumberFormatException {
 			String constraintName = null;
 			// 23000: Check constraint violation: {0}
 			// 23001: Unique index or primary key violation: {0}
 			if ( sqle.getSQLState().startsWith( "23" ) ) {
 				final String message = sqle.getMessage();
-				int idx = message.indexOf( "violation: " );
+				final int idx = message.indexOf( "violation: " );
 				if ( idx > 0 ) {
 					constraintName = message.substring( idx + "violation: ".length() );
 				}
@@ -294,46 +335,74 @@ public class H2Dialect extends Dialect {
 	};
 
 	@Override
-	public boolean supportsTemporaryTables() {
-		return true;
+	public SQLExceptionConversionDelegate buildSQLExceptionConversionDelegate() {
+		SQLExceptionConversionDelegate delegate = super.buildSQLExceptionConversionDelegate();
+		if (delegate == null) {
+			delegate = new SQLExceptionConversionDelegate() {
+				@Override
+				public JDBCException convert(SQLException sqlException, String message, String sql) {
+					final int errorCode = JdbcExceptionHelper.extractErrorCode( sqlException );
+
+					if (40001 == errorCode) {
+						// DEADLOCK DETECTED
+						return new LockAcquisitionException(message, sqlException, sql);
+					}
+
+					if (50200 == errorCode) {
+						// LOCK NOT AVAILABLE
+						return new PessimisticLockException(message, sqlException, sql);
+					}
+
+					if ( 90006 == errorCode ) {
+						// NULL not allowed for column [90006-145]
+						final String constraintName = getViolatedConstraintNameExtracter().extractConstraintName( sqlException );
+						return new ConstraintViolationException( message, sqlException, sql, constraintName );
+					}
+
+					return null;
+				}
+			};
+		}
+		return delegate;
 	}
 
 	@Override
-	public String getCreateTemporaryTableString() {
-		return "create cached local temporary table if not exists";
+	public MultiTableBulkIdStrategy getDefaultMultiTableBulkIdStrategy() {
+		return new LocalTemporaryTableBulkIdStrategy(
+				new IdTableSupportStandardImpl() {
+					@Override
+					public String getCreateIdTableCommand() {
+						return "create cached local temporary table if not exists";
+					}
+
+					@Override
+					public String getCreateIdTableStatementOptions() {
+						// actually 2 different options are specified here:
+						//		1) [on commit drop] - says to drop the table on transaction commit
+						//		2) [transactional] - says to not perform an implicit commit of any current transaction
+						return "on commit drop transactional";					}
+				},
+				AfterUseAction.CLEAN,
+				TempTableDdlTransactionHandling.NONE
+		);
 	}
 
 	@Override
-	public String getCreateTemporaryTablePostfix() {
-		// actually 2 different options are specified here:
-		//		1) [on commit drop] - says to drop the table on transaction commit
-		//		2) [transactional] - says to not perform an implicit commit of any current transaction
-		return "on commit drop transactional";
-	}
-
-	@Override
-	public Boolean performTemporaryTableDDLInIsolation() {
-		// explicitly create the table using the same connection and transaction
-		return Boolean.FALSE;
-	}
-
-	@Override
-	public boolean dropTemporaryTableAfterUse() {
-		return false;
-	}
-
 	public boolean supportsCurrentTimestampSelection() {
 		return true;
 	}
 
+	@Override
 	public boolean isCurrentTimestampSelectStringCallable() {
 		return false;
 	}
 
+	@Override
 	public String getCurrentTimestampSelectString() {
 		return "call current_timestamp()";
 	}
 
+	@Override
 	public boolean supportsUnionAll() {
 		return true;
 	}
@@ -347,13 +416,35 @@ public class H2Dialect extends Dialect {
 	}
 
 	@Override
-	public boolean supportsTupleDistinctCounts() {
-		return false;
+	public boolean requiresParensForTupleDistinctCounts() {
+		return true;
 	}
 
 	@Override
 	public boolean doesReadCommittedCauseWritersToBlockReaders() {
 		// see http://groups.google.com/group/h2-database/browse_thread/thread/562d8a49e2dabe99?hl=en
 		return true;
+	}
+	
+	@Override
+	public boolean supportsTuplesInSubqueries() {
+		return false;
+	}
+	
+	@Override
+	public boolean dropConstraints() {
+		// We don't need to drop constraints before dropping tables, that just leads to error
+		// messages about missing tables when we don't have a schema in the database
+		return false;
+	}
+
+	@Override
+	public IdentityColumnSupport getIdentityColumnSupport() {
+		return new H2IdentityColumnSupport();
+	}
+
+	@Override
+	public String getQueryHintString(String query, String hints) {
+		return IndexQueryHintHandler.INSTANCE.addQueryHints( query, hints );
 	}
 }

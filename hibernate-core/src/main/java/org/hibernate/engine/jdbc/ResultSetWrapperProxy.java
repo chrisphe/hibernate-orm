@@ -1,39 +1,23 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2009 by Red Hat Inc and/or its affiliates or by
- * third-party contributors as indicated by either @author tags or express
- * copyright attribution statements applied by the authors.  All
- * third-party contributions are distributed under license by Red Hat Inc.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.engine.jdbc;
 
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
-import java.lang.reflect.Proxy;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 
-import org.jboss.logging.Logger;
-
+import org.hibernate.boot.registry.classloading.spi.ClassLoaderService;
 import org.hibernate.engine.jdbc.spi.SqlExceptionHelper;
 import org.hibernate.internal.CoreMessageLogger;
+import org.hibernate.service.ServiceRegistry;
+
+import static org.hibernate.internal.CoreLogging.messageLogger;
 
 /**
  * A proxy for a ResultSet delegate, responsible for locally caching the columnName-to-columnIndex resolution that
@@ -43,10 +27,9 @@ import org.hibernate.internal.CoreMessageLogger;
  * @author Gail Badner
  */
 public class ResultSetWrapperProxy implements InvocationHandler {
+	private static final CoreMessageLogger LOG = messageLogger( ResultSetWrapperProxy.class );
 
-    private static final CoreMessageLogger LOG = Logger.getMessageLogger(CoreMessageLogger.class, ResultSetWrapperProxy.class.getName());
-	private static final Class[] PROXY_INTERFACES = new Class[] { ResultSet.class };
-	private static final SqlExceptionHelper sqlExceptionHelper = new SqlExceptionHelper();
+	private static final SqlExceptionHelper SQL_EXCEPTION_HELPER = new SqlExceptionHelper( false );
 
 	private final ResultSet rs;
 	private final ColumnNameCache columnNameCache;
@@ -61,54 +44,39 @@ public class ResultSetWrapperProxy implements InvocationHandler {
 	 *
 	 * @param resultSet The resultSet to wrap.
 	 * @param columnNameCache The cache storing data for converting column names to column indexes.
+	 * @param serviceRegistry Access to any needed services
+	 *
 	 * @return The generated proxy.
 	 */
-	public static ResultSet generateProxy(ResultSet resultSet, ColumnNameCache columnNameCache) {
-		return ( ResultSet ) Proxy.newProxyInstance(
-				getProxyClassLoader(),
-				PROXY_INTERFACES,
-				new ResultSetWrapperProxy( resultSet, columnNameCache )
+	public static ResultSet generateProxy(
+			ResultSet resultSet,
+			ColumnNameCache columnNameCache,
+			ServiceRegistry serviceRegistry) {
+		return serviceRegistry.getService( ClassLoaderService.class ).generateProxy(
+				new ResultSetWrapperProxy( resultSet, columnNameCache ),
+				ResultSet.class
 		);
 	}
 
-	/**
-	 * Determines the appropriate class loader to which the generated proxy
-	 * should be scoped.
-	 *
-	 * @return The class loader appropriate for proxy construction.
-	 */
-	public static ClassLoader getProxyClassLoader() {
-		ClassLoader cl = Thread.currentThread().getContextClassLoader();
-		if ( cl == null ) {
-			cl = ResultSet.class.getClassLoader();
-		}
-		return cl;
-	}
-
 	@Override
-	@SuppressWarnings( {"UnnecessaryBoxing"})
 	public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
 		if ( "findColumn".equals( method.getName() ) ) {
-			return Integer.valueOf( findColumn( ( String ) args[0] ) );
+			return findColumn( (String) args[0] );
 		}
 
 		if ( isFirstArgColumnLabel( method, args ) ) {
 			try {
-				int columnIndex = findColumn( ( String ) args[0] );
+				final Integer columnIndex = findColumn( (String) args[0] );
 				return invokeMethod(
-						locateCorrespondingColumnIndexMethod( method ), buildColumnIndexMethodArgs( args, columnIndex )
+						locateCorrespondingColumnIndexMethod( method ),
+						buildColumnIndexMethodArgs( args, columnIndex )
 				);
 			}
 			catch ( SQLException ex ) {
-				StringBuilder buf = new StringBuilder()
-						.append( "Exception getting column index for column: [" )
-						.append( args[0] )
-						.append( "].\nReverting to using: [" )
-						.append( args[0] )
-						.append( "] as first argument for method: [" )
-						.append( method )
-						.append( "]" );
-				sqlExceptionHelper.logExceptions( ex, buf.toString() );
+				final String msg = "Exception getting column index for column: [" + args[0] +
+						"].\nReverting to using: [" + args[0] +
+						"] as first argument for method: [" + method + "]";
+				SQL_EXCEPTION_HELPER.logExceptions( ex, msg );
 			}
 			catch ( NoSuchMethodException ex ) {
 				LOG.unableToSwitchToMethodUsingColumnIndex( method );
@@ -124,18 +92,18 @@ public class ResultSetWrapperProxy implements InvocationHandler {
 	 * @return The column index corresponding to the given column name.
 	 * @throws SQLException if the ResultSet object does not contain columnName or a database access error occurs
 	 */
-	private int findColumn(String columnName) throws SQLException {
+	private Integer findColumn(String columnName) throws SQLException {
 		return columnNameCache.getIndexForColumnName( columnName, rs );
 	}
 
-	private boolean isFirstArgColumnLabel(Method method, Object args[]) {
+	private boolean isFirstArgColumnLabel(Method method, Object[] args) {
 		// method name should start with either get or update
 		if ( ! ( method.getName().startsWith( "get" ) || method.getName().startsWith( "update" ) ) ) {
 			return false;
 		}
 
 		// method should have arguments, and have same number as incoming arguments
-		if ( ! ( method.getParameterTypes().length > 0 && args.length == method.getParameterTypes().length ) ) {
+		if ( ! ( method.getParameterCount() > 0 && args.length == method.getParameterCount() ) ) {
 			return false;
 		}
 
@@ -157,27 +125,26 @@ public class ResultSetWrapperProxy implements InvocationHandler {
 	 * @throws NoSuchMethodException Should never happen, but...
 	 */
 	private Method locateCorrespondingColumnIndexMethod(Method columnNameMethod) throws NoSuchMethodException {
-		Class actualParameterTypes[] = new Class[columnNameMethod.getParameterTypes().length];
+		final Class[] actualParameterTypes = new Class[columnNameMethod.getParameterCount()];
 		actualParameterTypes[0] = int.class;
 		System.arraycopy(
 				columnNameMethod.getParameterTypes(),
 				1,
 				actualParameterTypes,
 				1,
-				columnNameMethod.getParameterTypes().length - 1
+				columnNameMethod.getParameterCount() - 1
 		);
 		return columnNameMethod.getDeclaringClass().getMethod( columnNameMethod.getName(), actualParameterTypes );
 	}
 
-	@SuppressWarnings( {"UnnecessaryBoxing"})
-	private Object[] buildColumnIndexMethodArgs(Object[] incomingArgs, int columnIndex) {
-		Object actualArgs[] = new Object[incomingArgs.length];
-		actualArgs[0] = Integer.valueOf( columnIndex );
+	private Object[] buildColumnIndexMethodArgs(Object[] incomingArgs, Integer columnIndex) {
+		final Object[] actualArgs = new Object[incomingArgs.length];
+		actualArgs[0] = columnIndex;
 		System.arraycopy( incomingArgs, 1, actualArgs, 1, incomingArgs.length - 1 );
 		return actualArgs;
 	}
 
-	private Object invokeMethod(Method method, Object args[]) throws Throwable {
+	private Object invokeMethod(Method method, Object[] args) throws Throwable {
 		try {
 			return method.invoke( rs, args );
 		}

@@ -1,33 +1,17 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2010, Red Hat Inc. or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Inc.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.proxy;
+
 import java.io.Serializable;
 import java.lang.reflect.Method;
 import java.util.Set;
 
 import org.hibernate.HibernateException;
-import org.hibernate.engine.spi.SessionImplementor;
+import org.hibernate.engine.spi.SharedSessionContractImplementor;
 import org.hibernate.type.CompositeType;
 
 /**
@@ -54,17 +38,17 @@ public interface ProxyFactory {
 	 * @param setIdentifierMethod Reference to the identifier setter method;
 	 * invocation on this method should not force initialization
 	 * @param componentIdType For composite identifier types, a reference to
-	 * the {@link org.hibernate.type.ComponentType type} of the identifier
+	 * the {@link org.hibernate.type.CompositeType type} of the identifier
 	 * property; again accessing the id should generally not cause
 	 * initialization - but need to bear in mind <key-many-to-one/>
 	 * mappings.
 	 * @throws HibernateException Indicates a problem completing post
 	 * instantiation initialization.
 	 */
-	public void postInstantiate(
+	void postInstantiate(
 			String entityName,
 			Class persistentClass,
-			Set interfaces,
+			Set<Class> interfaces,
 			Method getIdentifierMethod,
 			Method setIdentifierMethod,
 			CompositeType componentIdType) throws HibernateException;
@@ -79,6 +63,6 @@ public interface ProxyFactory {
 	 * @throws HibernateException Indicates problems generating the requested
 	 * proxy.
 	 */
-	public HibernateProxy getProxy(Serializable id,SessionImplementor session) throws HibernateException;
+	HibernateProxy getProxy(Serializable id, SharedSessionContractImplementor session) throws HibernateException;
 
 }

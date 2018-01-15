@@ -1,26 +1,8 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2008, Red Hat Middleware LLC or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Middleware LLC.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
- *
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.sql;
 import java.util.HashSet;
@@ -37,21 +19,23 @@ public class OracleJoinFragment extends JoinFragment {
 	private StringBuilder afterWhere = new StringBuilder();
 
 	public void addJoin(String tableName, String alias, String[] fkColumns, String[] pkColumns, JoinType joinType) {
-
 		addCrossJoin( tableName, alias );
 
 		for ( int j = 0; j < fkColumns.length; j++ ) {
 			setHasThetaJoins( true );
 			afterWhere.append( " and " )
 					.append( fkColumns[j] );
-			if ( joinType == JoinType.RIGHT_OUTER_JOIN || joinType == JoinType.FULL_JOIN ) afterWhere.append( "(+)" );
+			if ( joinType == JoinType.RIGHT_OUTER_JOIN || joinType == JoinType.FULL_JOIN ) {
+				afterWhere.append( "(+)" );
+			}
 			afterWhere.append( '=' )
 					.append( alias )
 					.append( '.' )
 					.append( pkColumns[j] );
-			if ( joinType == JoinType.LEFT_OUTER_JOIN || joinType == JoinType.FULL_JOIN ) afterWhere.append( "(+)" );
+			if ( joinType == JoinType.LEFT_OUTER_JOIN || joinType == JoinType.FULL_JOIN ) {
+				afterWhere.append( "(+)" );
+			}
 		}
-
 	}
 
 	public String toFromFragmentString() {
@@ -75,11 +59,11 @@ public class OracleJoinFragment extends JoinFragment {
 	}
 
 	public void addCondition(String alias, String[] columns, String condition) {
-		for ( int i = 0; i < columns.length; i++ ) {
+		for ( String column : columns ) {
 			afterWhere.append( " and " )
 					.append( alias )
 					.append( '.' )
-					.append( columns[i] )
+					.append( column )
 					.append( condition );
 		}
 	}
@@ -129,8 +113,8 @@ public class OracleJoinFragment extends JoinFragment {
 		StringBuilder buf = new StringBuilder( on );
 		for ( int i = 0; i < buf.length(); i++ ) {
 			char character = buf.charAt( i );
-			boolean isInsertPoint = OPERATORS.contains( new Character( character ) ) ||
-					( character == ' ' && buf.length() > i + 3 && "is ".equals( buf.substring( i + 1, i + 4 ) ) );
+			final boolean isInsertPoint = OPERATORS.contains( Character.valueOf( character ) )
+					|| ( character == ' ' && buf.length() > i + 3 && "is ".equals( buf.substring( i + 1, i + 4 ) ) );
 			if ( isInsertPoint ) {
 				buf.insert( i, "(+)" );
 				i += 3;
@@ -142,8 +126,8 @@ public class OracleJoinFragment extends JoinFragment {
 	private static final Set OPERATORS = new HashSet();
 
 	static {
-		OPERATORS.add( new Character( '=' ) );
-		OPERATORS.add( new Character( '<' ) );
-		OPERATORS.add( new Character( '>' ) );
+		OPERATORS.add( Character.valueOf( '=' ) );
+		OPERATORS.add( Character.valueOf( '<' ) );
+		OPERATORS.add( Character.valueOf( '>' ) );
 	}
 }

@@ -1,29 +1,13 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2008-2011, Red Hat Inc. or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Inc.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.event.internal;
 
 import org.hibernate.HibernateException;
+import org.hibernate.bytecode.enhance.spi.LazyPropertyInitializer;
 import org.hibernate.collection.spi.PersistentCollection;
 import org.hibernate.engine.internal.Collections;
 import org.hibernate.event.spi.EventSource;
@@ -52,6 +36,9 @@ public class FlushVisitor extends AbstractVisitor {
 			if ( type.hasHolder() ) {
 				coll = getSession().getPersistenceContext().getCollectionHolder(collection);
 			}
+			else if ( collection == LazyPropertyInitializer.UNFETCHED_PROPERTY ) {
+				coll = (PersistentCollection) type.resolve( collection, getSession(), owner );
+			}
 			else {
 				coll = (PersistentCollection) collection;
 			}
@@ -61,6 +48,11 @@ public class FlushVisitor extends AbstractVisitor {
 
 		return null;
 
+	}
+
+	@Override
+	boolean includeEntityProperty(Object[] values, int i) {
+		return true;
 	}
 
 	FlushVisitor(EventSource session, Object owner) {

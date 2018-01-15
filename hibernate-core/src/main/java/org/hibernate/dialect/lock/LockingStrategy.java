@@ -1,32 +1,15 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2010, Red Hat Inc. or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Inc.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.dialect.lock;
 
 import java.io.Serializable;
 
 import org.hibernate.StaleObjectStateException;
-import org.hibernate.engine.spi.SessionImplementor;
+import org.hibernate.engine.spi.SharedSessionContractImplementor;
 
 /**
  * A strategy abstraction for how locks are obtained in the underlying database.
@@ -51,10 +34,11 @@ public interface LockingStrategy {
 	 * @param object The object logically being locked (currently not used)
 	 * @param timeout timeout in milliseconds, 0 = no wait, -1 = wait indefinitely
 	 * @param session The session from which the lock request originated
+	 *
 	 * @throws StaleObjectStateException Indicates an inability to locate the database row as part of acquiring
 	 * the requested lock.
 	 * @throws LockingStrategyException Indicates a failure in the lock attempt
 	 */
-	public void lock(Serializable id, Object version, Object object, int timeout, SessionImplementor session)
-	throws StaleObjectStateException, LockingStrategyException;
+	void lock(Serializable id, Object version, Object object, int timeout, SharedSessionContractImplementor session)
+			throws StaleObjectStateException, LockingStrategyException;
 }

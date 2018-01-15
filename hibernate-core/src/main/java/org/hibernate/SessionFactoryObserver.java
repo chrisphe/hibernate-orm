@@ -1,28 +1,11 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2008, Red Hat Middleware LLC or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Middleware LLC.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
- *
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate;
+
 import java.io.Serializable;
 
 /**
@@ -36,7 +19,25 @@ public interface SessionFactoryObserver extends Serializable {
 	 *
 	 * @param factory The factory initialized.
 	 */
-	public void sessionFactoryCreated(SessionFactory factory);
+	default void sessionFactoryCreated(SessionFactory factory) {
+		// nothing to do by default
+	}
+
+	/**
+	 * Callback to indicate that the given factory is about close.  The passed factory reference should be usable
+	 * since it is only about to close.
+	 * <p/>
+	 * NOTE : defined as default to allow for existing SessionFactoryObserver impls to work
+	 * in 5.2.  Starting in 6.0 the default will be removed and SessionFactoryObserver impls
+	 * will be required to implement this new method.
+	 *
+	 * @param factory The factory about to be closed.
+	 *
+	 * @since 5.2
+	 */
+	default void sessionFactoryClosing(SessionFactory factory) {
+		// nothing to do by default
+	}
 
 	/**
 	 * Callback to indicate that the given factory has been closed.  Care should be taken
@@ -44,5 +45,7 @@ public interface SessionFactoryObserver extends Serializable {
 	 *
 	 * @param factory The factory closed.
 	 */
-	public void sessionFactoryClosed(SessionFactory factory);
+	default void sessionFactoryClosed(SessionFactory factory) {
+		// nothing to do by default
+	}
 }

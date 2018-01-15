@@ -1,36 +1,21 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2008, Red Hat Middleware LLC or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Middleware LLC.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
- *
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.loader.custom.sql;
+
 import java.util.ArrayList;
-import java.util.HashMap;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Pattern;
 
 import org.hibernate.QueryException;
 import org.hibernate.engine.query.spi.ParameterParser;
 import org.hibernate.engine.spi.SessionFactoryImplementor;
+import org.hibernate.param.ParameterBinder;
 import org.hibernate.persister.collection.SQLLoadableCollection;
 import org.hibernate.persister.entity.SQLLoadable;
 
@@ -41,6 +26,7 @@ import org.hibernate.persister.entity.SQLLoadable;
  * @author Paul Benedict
  */
 public class SQLQueryParser {
+	private static final Pattern PREPARED_STATEMENT_PATTERN = Pattern.compile( "^\\{.*?\\}$" );
 	private static final String HIBERNATE_PLACEHOLDER_PREFIX = "h-";
 	private static final String DOMAIN_PLACEHOLDER = "h-domain";
 	private static final String CATALOG_PLACEHOLDER = "h-catalog";
@@ -50,10 +36,11 @@ public class SQLQueryParser {
 	private final String originalQueryString;
 	private final ParserContext context;
 
-	private final Map namedParameters = new HashMap();
-	private long aliasesFound = 0;
+	private long aliasesFound;
 
-	static interface ParserContext {
+	private List<ParameterBinder> paramValueBinders;
+
+	interface ParserContext {
 		boolean isEntityAlias(String aliasName);
 		SQLLoadable getEntityPersisterByAlias(String alias);
 		String getEntitySuffixByAlias(String alias);
@@ -69,12 +56,16 @@ public class SQLQueryParser {
 		this.factory = factory;
 	}
 
-	public Map getNamedParameters() {
-		return namedParameters;
+	public List<ParameterBinder> getParameterValueBinders() {
+		return paramValueBinders == null ? Collections.emptyList() : paramValueBinders;
 	}
 
 	public boolean queryHasAliases() {
 		return aliasesFound>0;
+	}
+
+	protected String getOriginalQueryString() {
+		return originalQueryString;
 	}
 
 	public String process() {
@@ -85,7 +76,11 @@ public class SQLQueryParser {
 
 	// TODO: should "record" how many properties we have reffered to - and if we 
 	//       don't get'em'all we throw an exception! Way better than trial and error ;)
-	private String substituteBrackets(String sqlQuery) throws QueryException {
+	protected String substituteBrackets(String sqlQuery) throws QueryException {
+
+		if ( PREPARED_STATEMENT_PATTERN.matcher( sqlQuery.trim() ).matches() ) {
+			return sqlQuery;
+		}
 
 		StringBuilder result = new StringBuilder( sqlQuery.length() + 20 );
 		int left, right;
@@ -143,7 +138,7 @@ public class SQLQueryParser {
 					throw new QueryException( "Unknown placeholder ", aliasPath );
 				}
 			}
-			else {
+			else if (context != null) {
 				int firstDot = aliasPath.indexOf( '.' );
 				if ( firstDot == -1 ) {
 					if ( context.isEntityAlias( aliasPath ) ) {
@@ -233,9 +228,7 @@ public class SQLQueryParser {
 		
 		}
 	}
-	private String resolveProperties(
-			String aliasName,
-	        String propertyName) {
+	private String resolveProperties(String aliasName, String propertyName) {
 		Map fieldResults = context.getPropertyResultsMapByAlias( aliasName );
 		SQLLoadable persister = context.getEntityPersisterByAlias( aliasName );
 		String suffix = context.getEntitySuffixByAlias( aliasName );
@@ -285,56 +278,76 @@ public class SQLQueryParser {
 	 * @return The SQL query with parameter substitution complete.
 	 */
 	private String substituteParams(String sqlString) {
-		ParameterSubstitutionRecognizer recognizer = new ParameterSubstitutionRecognizer();
+		final ParameterSubstitutionRecognizer recognizer = new ParameterSubstitutionRecognizer( factory );
 		ParameterParser.parse( sqlString, recognizer );
 
-		namedParameters.clear();
-		namedParameters.putAll( recognizer.namedParameterBindPoints );
+		paramValueBinders = recognizer.getParameterValueBinders();
 
 		return recognizer.result.toString();
 	}
 
 	public static class ParameterSubstitutionRecognizer implements ParameterParser.Recognizer {
 		StringBuilder result = new StringBuilder();
-		Map namedParameterBindPoints = new HashMap();
-		int parameterCount = 0;
 
+		int jdbcPositionalParamCount;
+		private List<ParameterBinder> paramValueBinders;
+
+		public ParameterSubstitutionRecognizer(SessionFactoryImplementor factory) {
+			this.jdbcPositionalParamCount = factory.getSessionFactoryOptions().jdbcStyleParamsZeroBased()
+					? 0
+					: 1;
+		}
+
+		@Override
 		public void outParameter(int position) {
 			result.append( '?' );
 		}
 
+		@Override
 		public void ordinalParameter(int position) {
 			result.append( '?' );
+			registerPositionParamBinder( jdbcPositionalParamCount++ );
 		}
 
-		public void namedParameter(String name, int position) {
-			addNamedParameter( name );
+		private void registerPositionParamBinder(int label) {
+			if ( paramValueBinders == null ) {
+				paramValueBinders = new ArrayList<>();
+			}
+
+			paramValueBinders.add( new PositionalParamBinder( label ) );
+		}
+
+		@Override
+		public void jpaPositionalParameter(int name, int position) {
 			result.append( '?' );
+			registerPositionParamBinder( name );
 		}
 
-		public void jpaPositionalParameter(String name, int position) {
-			namedParameter( name, position );
+		@Override
+		public void namedParameter(String name, int position) {
+			result.append( '?' );
+			registerNamedParamBinder( name );
 		}
 
+		private void registerNamedParamBinder(String name) {
+			if ( paramValueBinders == null ) {
+				paramValueBinders = new ArrayList<>();
+			}
+
+			paramValueBinders.add( new NamedParamBinder( name ) );
+		}
+
+		@Override
 		public void other(char character) {
 			result.append( character );
 		}
 
-		private void addNamedParameter(String name) {
-			Integer loc = parameterCount++;
-			Object o = namedParameterBindPoints.get( name );
-			if ( o == null ) {
-				namedParameterBindPoints.put( name, loc );
-			}
-			else if ( o instanceof Integer ) {
-				ArrayList list = new ArrayList( 4 );
-				list.add( o );
-				list.add( loc );
-				namedParameterBindPoints.put( name, list );
-			}
-			else {
-				( ( List ) o ).add( loc );
-			}
+		public List<ParameterBinder> getParameterValueBinders() {
+			return paramValueBinders;
+		}
+
+		@Override
+		public void complete() {
 		}
 	}
 }

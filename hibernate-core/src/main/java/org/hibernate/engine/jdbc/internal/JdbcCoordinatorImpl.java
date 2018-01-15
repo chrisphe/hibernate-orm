@@ -1,25 +1,8 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2011, Red Hat Inc. or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Inc.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.engine.jdbc.internal;
 
@@ -27,27 +10,41 @@ import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.sql.Connection;
+import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Statement;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
 
-import org.jboss.logging.Logger;
-
+import org.hibernate.ConnectionReleaseMode;
 import org.hibernate.HibernateException;
 import org.hibernate.TransactionException;
 import org.hibernate.engine.jdbc.batch.spi.Batch;
 import org.hibernate.engine.jdbc.batch.spi.BatchBuilder;
 import org.hibernate.engine.jdbc.batch.spi.BatchKey;
+import org.hibernate.engine.jdbc.connections.spi.JdbcConnectionAccess;
+import org.hibernate.engine.jdbc.spi.InvalidatableWrapper;
 import org.hibernate.engine.jdbc.spi.JdbcCoordinator;
-import org.hibernate.engine.jdbc.spi.LogicalConnectionImplementor;
+import org.hibernate.engine.jdbc.spi.JdbcServices;
+import org.hibernate.engine.jdbc.spi.JdbcWrapper;
+import org.hibernate.engine.jdbc.spi.ResultSetReturn;
 import org.hibernate.engine.jdbc.spi.SqlExceptionHelper;
 import org.hibernate.engine.jdbc.spi.StatementPreparer;
 import org.hibernate.engine.spi.SessionFactoryImplementor;
-import org.hibernate.engine.transaction.internal.TransactionCoordinatorImpl;
-import org.hibernate.engine.transaction.spi.TransactionContext;
-import org.hibernate.engine.transaction.spi.TransactionCoordinator;
-import org.hibernate.engine.transaction.spi.TransactionEnvironment;
+import org.hibernate.internal.CoreLogging;
 import org.hibernate.internal.CoreMessageLogger;
 import org.hibernate.jdbc.WorkExecutor;
 import org.hibernate.jdbc.WorkExecutorVisitable;
+import org.hibernate.resource.jdbc.ResourceRegistry;
+import org.hibernate.resource.jdbc.internal.LogicalConnectionManagedImpl;
+import org.hibernate.resource.jdbc.internal.LogicalConnectionProvidedImpl;
+import org.hibernate.resource.jdbc.internal.ResourceRegistryStandardImpl;
+import org.hibernate.resource.jdbc.spi.JdbcSessionOwner;
+import org.hibernate.resource.jdbc.spi.LogicalConnectionImplementor;
+import org.hibernate.resource.transaction.backend.jdbc.spi.JdbcResourceTransaction;
 
 /**
  * Standard Hibernate implementation of {@link JdbcCoordinator}
@@ -55,38 +52,81 @@ import org.hibernate.jdbc.WorkExecutorVisitable;
  * IMPL NOTE : Custom serialization handling!
  *
  * @author Steve Ebersole
+ * @author Brett Meyer
+ * @author Sanne Grinovero
  */
 public class JdbcCoordinatorImpl implements JdbcCoordinator {
-    private static final CoreMessageLogger LOG = Logger.getMessageLogger(
-			CoreMessageLogger.class, JdbcCoordinatorImpl.class.getName()
-	);
+	private static final CoreMessageLogger LOG = CoreLogging.messageLogger( JdbcCoordinatorImpl.class );
 
-	private transient TransactionCoordinatorImpl transactionCoordinator;
-	private final transient LogicalConnectionImpl logicalConnection;
+	private transient LogicalConnectionImplementor logicalConnection;
+	private transient JdbcSessionOwner owner;
 
 	private transient Batch currentBatch;
 
 	private transient long transactionTimeOutInstant = -1;
 
+	/**
+	 * This is a marker value to insert instead of null values for when a Statement gets registered in xref
+	 * but has no associated ResultSets registered. This is useful to efficiently check against duplicate
+	 * registration but you'll have to check against instance equality rather than null before attempting
+	 * to add elements to this set.
+	 */
+	private static final Set<ResultSet> EMPTY_RESULTSET = Collections.emptySet();
+
+	private final HashMap<Statement,Set<ResultSet>> xref = new HashMap<>();
+	private final Set<ResultSet> unassociatedResultSets = new HashSet<>();
+	private transient SqlExceptionHelper exceptionHelper;
+
+	private Statement lastQuery;
+	private final boolean isUserSuppliedConnection;
+
+
+	/**
+	 * If true, manually (and temporarily) circumvent aggressive release processing.
+	 */
+	private boolean releasesEnabled = true;
+
+	/**
+	 * Constructs a JdbcCoordinatorImpl
+	 *
+	 * @param userSuppliedConnection The user supplied connection (may be null)
+	 */
 	public JdbcCoordinatorImpl(
 			Connection userSuppliedConnection,
-			TransactionCoordinatorImpl transactionCoordinator) {
-		this.transactionCoordinator = transactionCoordinator;
-		this.logicalConnection = new LogicalConnectionImpl(
-				userSuppliedConnection,
-				transactionCoordinator.getTransactionContext().getConnectionReleaseMode(),
-				transactionCoordinator.getTransactionContext().getTransactionEnvironment().getJdbcServices(),
-				transactionCoordinator.getTransactionContext().getJdbcConnectionAccess()
+			JdbcSessionOwner owner) {
+		this.isUserSuppliedConnection = userSuppliedConnection != null;
+
+		final ResourceRegistry resourceRegistry = new ResourceRegistryStandardImpl(
+				owner.getJdbcSessionContext().getObserver()
 		);
+		if ( isUserSuppliedConnection ) {
+			this.logicalConnection = new LogicalConnectionProvidedImpl( userSuppliedConnection, resourceRegistry );
+		}
+		else {
+			this.logicalConnection = new LogicalConnectionManagedImpl(
+					owner.getJdbcConnectionAccess(),
+					owner.getJdbcSessionContext(),
+					resourceRegistry
+			);
+		}
+		this.owner = owner;
+		this.exceptionHelper = owner.getJdbcSessionContext()
+				.getServiceRegistry()
+				.getService( JdbcServices.class )
+				.getSqlExceptionHelper();
 	}
 
-	private JdbcCoordinatorImpl(LogicalConnectionImpl logicalConnection) {
+	private JdbcCoordinatorImpl(
+			LogicalConnectionImplementor logicalConnection,
+			boolean isUserSuppliedConnection,
+			JdbcSessionOwner owner) {
 		this.logicalConnection = logicalConnection;
-	}
-
-	@Override
-	public TransactionCoordinator getTransactionCoordinator() {
-		return transactionCoordinator;
+		this.isUserSuppliedConnection = isUserSuppliedConnection;
+		this.owner = owner;
+		this.exceptionHelper = owner.getJdbcSessionContext()
+				.getServiceRegistry()
+				.getService( JdbcServices.class )
+				.getSqlExceptionHelper();
 	}
 
 	@Override
@@ -94,29 +134,29 @@ public class JdbcCoordinatorImpl implements JdbcCoordinator {
 		return logicalConnection;
 	}
 
-	protected TransactionEnvironment transactionEnvironment() {
-		return getTransactionCoordinator().getTransactionContext().getTransactionEnvironment();
-	}
-
 	protected SessionFactoryImplementor sessionFactory() {
-		return transactionEnvironment().getSessionFactory();
+		return this.owner.getJdbcSessionContext().getSessionFactory();
 	}
 
 	protected BatchBuilder batchBuilder() {
 		return sessionFactory().getServiceRegistry().getService( BatchBuilder.class );
 	}
 
-	private SqlExceptionHelper sqlExceptionHelper() {
-		return transactionEnvironment().getJdbcServices().getSqlExceptionHelper();
+	/**
+	 * Access to the SqlExceptionHelper
+	 *
+	 * @return The SqlExceptionHelper
+	 */
+	public SqlExceptionHelper sqlExceptionHelper() {
+		return exceptionHelper;
 	}
 
-
-	private int flushDepth = 0;
+	private int flushDepth;
 
 	@Override
 	public void flushBeginning() {
 		if ( flushDepth == 0 ) {
-			logicalConnection.disableReleases();
+			releasesEnabled = false;
 		}
 		flushDepth++;
 	}
@@ -128,17 +168,27 @@ public class JdbcCoordinatorImpl implements JdbcCoordinator {
 			throw new HibernateException( "Mismatched flush handling" );
 		}
 		if ( flushDepth == 0 ) {
-			logicalConnection.enableReleases();
+			releasesEnabled = true;
 		}
+		
+		afterStatementExecution();
 	}
 
 	@Override
 	public Connection close() {
-		if ( currentBatch != null ) {
-			LOG.closingUnreleasedBatch();
-			currentBatch.release();
+		LOG.tracev( "Closing JDBC container [{0}]", this );
+		Connection connection;
+		try {
+			if ( currentBatch != null ) {
+				LOG.closingUnreleasedBatch();
+				currentBatch.release();
+			}
+			cleanup();
 		}
-		return logicalConnection.close();
+		finally {
+			connection = logicalConnection.close();
+		}
+		return connection;
 	}
 
 	@Override
@@ -160,7 +210,8 @@ public class JdbcCoordinatorImpl implements JdbcCoordinator {
 	public void executeBatch() {
 		if ( currentBatch != null ) {
 			currentBatch.execute();
-			currentBatch.release(); // needed?
+			// needed?
+			currentBatch.release();
 		}
 	}
 
@@ -181,9 +232,24 @@ public class JdbcCoordinatorImpl implements JdbcCoordinator {
 		return statementPreparer;
 	}
 
+	private transient ResultSetReturn resultSetExtractor;
+
+	@Override
+	public ResultSetReturn getResultSetReturn() {
+		if ( resultSetExtractor == null ) {
+			resultSetExtractor = new ResultSetReturnImpl( this );
+		}
+		return resultSetExtractor;
+	}
+
 	@Override
 	public void setTransactionTimeOut(int seconds) {
 		transactionTimeOutInstant = System.currentTimeMillis() + ( seconds * 1000 );
+	}
+
+	@Override
+	public void flushBeforeTransactionCompletion() {
+		getJdbcSessionOwner().flushBeforeTransactionCompletion();
 	}
 
 	@Override
@@ -199,54 +265,272 @@ public class JdbcCoordinatorImpl implements JdbcCoordinator {
 	}
 
 	@Override
-	public void afterTransaction() {
-		logicalConnection.afterTransaction();
-		transactionTimeOutInstant = -1;
+	public void afterStatementExecution() {
+		LOG.tracev( "Starting after statement execution processing [{0}]", getConnectionReleaseMode() );
+		if ( getConnectionReleaseMode() == ConnectionReleaseMode.AFTER_STATEMENT ) {
+			if ( ! releasesEnabled ) {
+				LOG.debug( "Skipping aggressive release due to manual disabling" );
+				return;
+			}
+			if ( hasRegisteredResources() ) {
+				LOG.debug( "Skipping aggressive release due to registered resources" );
+				return;
+			}
+			getLogicalConnection().afterStatement();
+		}
 	}
 
 	@Override
+	public void afterTransaction() {
+		transactionTimeOutInstant = -1;
+		if ( getConnectionReleaseMode() == ConnectionReleaseMode.AFTER_STATEMENT ||
+				getConnectionReleaseMode() == ConnectionReleaseMode.AFTER_TRANSACTION ) {
+			this.logicalConnection.afterTransaction();
+		}
+	}
+
+	private void releaseResources() {
+		getResourceRegistry().releaseResources();
+	}
+
+	private boolean hasRegisteredResources() {
+		return getResourceRegistry().hasRegisteredResources();
+	}
+
+	private ConnectionReleaseMode determineConnectionReleaseMode(
+			JdbcConnectionAccess jdbcConnectionAccess,
+			boolean isUserSuppliedConnection,
+			ConnectionReleaseMode connectionReleaseMode) {
+		if ( isUserSuppliedConnection ) {
+			return ConnectionReleaseMode.ON_CLOSE;
+		}
+		else if ( connectionReleaseMode == ConnectionReleaseMode.AFTER_STATEMENT &&
+				! jdbcConnectionAccess.supportsAggressiveRelease() ) {
+			LOG.debug( "Connection provider reports to not support aggressive release; overriding" );
+			return ConnectionReleaseMode.AFTER_TRANSACTION;
+		}
+		else {
+			return connectionReleaseMode;
+		}
+	}
+	@Override
 	public <T> T coordinateWork(WorkExecutorVisitable<T> work) {
-		Connection connection = getLogicalConnection().getDistinctConnectionProxy();
+		final Connection connection = getLogicalConnection().getPhysicalConnection();
 		try {
-			T result = work.accept( new WorkExecutor<T>(), connection );
-			getLogicalConnection().afterStatementExecution();
+			final T result = work.accept( new WorkExecutor<T>(), connection );
+			afterStatementExecution();
 			return result;
 		}
 		catch ( SQLException e ) {
 			throw sqlExceptionHelper().convert( e, "error executing work" );
 		}
-		finally {
-			try {
-				if ( ! connection.isClosed() ) {
-					connection.close();
-				}
-			}
-			catch (SQLException e) {
-				LOG.debug( "Error closing connection proxy", e );
-			}
+	}
+
+	@Override
+	public boolean isReadyForSerialization() {
+		return this.isUserSuppliedConnection
+				? ! getLogicalConnection().isPhysicallyConnected()
+				: ! hasRegisteredResources();
+	}
+
+	@Override
+	@SuppressWarnings({ "unchecked" })
+	public void registerLastQuery(Statement statement) {
+		LOG.tracev( "Registering last query statement [{0}]", statement );
+		if ( statement instanceof JdbcWrapper ) {
+			final JdbcWrapper<Statement> wrapper = (JdbcWrapper<Statement>) statement;
+			registerLastQuery( wrapper.getWrappedObject() );
+			return;
 		}
+		lastQuery = statement;
 	}
 
 	@Override
 	public void cancelLastQuery() {
-		logicalConnection.getResourceRegistry().cancelLastQuery();
+		try {
+			if (lastQuery != null) {
+				lastQuery.cancel();
+			}
+		}
+		catch (SQLException sqle) {
+			throw exceptionHelper.convert( sqle, "Cannot cancel query" );
+		}
+		finally {
+			lastQuery = null;
+		}
 	}
 
+	@Override
+	public void enableReleases() {
+		releasesEnabled = true;
+	}
+	
+	@Override
+	public void disableReleases() {
+		releasesEnabled = false;
+	}
 
+	private void cleanup() {
+		for ( Map.Entry<Statement,Set<ResultSet>> entry : xref.entrySet() ) {
+			closeAll( entry.getValue() );
+			close( entry.getKey() );
+		}
+		xref.clear();
+
+		closeAll( unassociatedResultSets );
+	}
+
+	protected void closeAll(Set<ResultSet> resultSets) {
+		for ( ResultSet resultSet : resultSets ) {
+			close( resultSet );
+		}
+		resultSets.clear();
+	}
+
+	@SuppressWarnings({ "unchecked" })
+	protected void close(Statement statement) {
+		LOG.tracev( "Closing prepared statement [{0}]", statement );
+		
+		// Important for Statement caching -- some DBs (especially Sybase) log warnings on every Statement under
+		// certain situations.
+		sqlExceptionHelper().logAndClearWarnings( statement );
+
+		if ( statement instanceof InvalidatableWrapper ) {
+			final InvalidatableWrapper<Statement> wrapper = (InvalidatableWrapper<Statement>) statement;
+			close( wrapper.getWrappedObject() );
+			wrapper.invalidate();
+			return;
+		}
+
+		try {
+			// if we are unable to "clean" the prepared statement,
+			// we do not close it
+			try {
+				if ( statement.getMaxRows() != 0 ) {
+					statement.setMaxRows( 0 );
+				}
+				if ( statement.getQueryTimeout() != 0 ) {
+					statement.setQueryTimeout( 0 );
+				}
+			}
+			catch( SQLException sqle ) {
+				// there was a problem "cleaning" the prepared statement
+				if ( LOG.isDebugEnabled() ) {
+					LOG.debugf( "Exception clearing maxRows/queryTimeout [%s]", sqle.getMessage() );
+				}
+				// EARLY EXIT!!!
+				return;
+			}
+			statement.close();
+			if ( lastQuery == statement ) {
+				lastQuery = null;
+			}
+		}
+		catch( SQLException e ) {
+			LOG.debugf( "Unable to release JDBC statement [%s]", e.getMessage() );
+		}
+		catch ( Exception e ) {
+			// try to handle general errors more elegantly
+			LOG.debugf( "Unable to release JDBC statement [%s]", e.getMessage() );
+		}
+	}
+
+	@SuppressWarnings({ "unchecked" })
+	protected void close(ResultSet resultSet) {
+		LOG.tracev( "Closing result set [{0}]", resultSet );
+
+		if ( resultSet instanceof InvalidatableWrapper ) {
+			final InvalidatableWrapper<ResultSet> wrapper = (InvalidatableWrapper<ResultSet>) resultSet;
+			close( wrapper.getWrappedObject() );
+			wrapper.invalidate();
+			return;
+		}
+
+		try {
+			resultSet.close();
+		}
+		catch( SQLException e ) {
+			LOG.debugf( "Unable to release JDBC result set [%s]", e.getMessage() );
+		}
+		catch ( Exception e ) {
+			// try to handle general errors more elegantly
+			LOG.debugf( "Unable to release JDBC result set [%s]", e.getMessage() );
+		}
+	}
+
+	@Override
+	public boolean isActive() {
+		return !sessionFactory().isClosed();
+	}
+
+	@Override
+	public void afterTransactionBegin() {
+		owner.afterTransactionBegin();
+	}
+
+	@Override
+	public void beforeTransactionCompletion() {
+		owner.beforeTransactionCompletion();
+	}
+
+	@Override
+	public void afterTransactionCompletion(boolean successful, boolean delayed) {
+		afterTransaction();
+		owner.afterTransactionCompletion( successful, delayed );
+	}
+
+	@Override
+	public JdbcSessionOwner getJdbcSessionOwner() {
+		return this.owner;
+	}
+
+	@Override
+	public JdbcResourceTransaction getResourceLocalTransaction() {
+		return logicalConnection.getPhysicalJdbcTransaction();
+	}
+
+	/**
+	 * JDK serialization hook
+	 *
+	 * @param oos The stream into which to write our state
+	 *
+	 * @throws IOException Trouble accessing the stream
+	 */
+	@Override
 	public void serialize(ObjectOutputStream oos) throws IOException {
-		if ( ! logicalConnection.isReadyForSerialization() ) {
+		if ( ! isReadyForSerialization() ) {
 			throw new HibernateException( "Cannot serialize Session while connected" );
 		}
+		oos.writeBoolean( isUserSuppliedConnection );
 		logicalConnection.serialize( oos );
 	}
 
+	/**
+	 * JDK deserialization hook
+	 *
+	 * @param ois The stream into which to write our state
+	 * @param owner The Jdbc Session owner which owns the JdbcCoordinatorImpl to be deserialized.
+	 *
+	 * @return The deserialized JdbcCoordinatorImpl
+	 *
+	 * @throws IOException Trouble accessing the stream
+	 * @throws ClassNotFoundException Trouble reading the stream
+	 */
 	public static JdbcCoordinatorImpl deserialize(
 			ObjectInputStream ois,
-			TransactionContext transactionContext) throws IOException, ClassNotFoundException {
-		return new JdbcCoordinatorImpl( LogicalConnectionImpl.deserialize( ois, transactionContext ) );
- 	}
-
-	public void afterDeserialize(TransactionCoordinatorImpl transactionCoordinator) {
-		this.transactionCoordinator = transactionCoordinator;
+			JdbcSessionOwner owner) throws IOException, ClassNotFoundException {
+		final boolean isUserSuppliedConnection = ois.readBoolean();
+		LogicalConnectionImplementor logicalConnection;
+		if ( isUserSuppliedConnection ) {
+			logicalConnection = LogicalConnectionProvidedImpl.deserialize( ois );
+		}
+		else {
+			logicalConnection = LogicalConnectionManagedImpl.deserialize(
+					ois,
+					owner.getJdbcConnectionAccess(),
+					owner.getJdbcSessionContext()
+			);
+		}
+		return new JdbcCoordinatorImpl( logicalConnection, isUserSuppliedConnection, owner );
 	}
 }

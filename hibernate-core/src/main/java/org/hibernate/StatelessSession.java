@@ -1,25 +1,8 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2008-2011, Red Hat Inc. or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Inc.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate;
 
@@ -42,34 +25,37 @@ import java.sql.Connection;
  *
  * @author Gavin King
  */
-public interface StatelessSession extends SharedSessionContract {
+public interface StatelessSession extends SharedSessionContract, AutoCloseable {
 	/**
 	 * Close the stateless session and release the JDBC connection.
 	 */
-	public void close();
+	void close();
 
 	/**
 	 * Insert a row.
 	 *
 	 * @param entity a new transient instance
+	 *
+	 * @return The identifier of the inserted entity
 	 */
-	public Serializable insert(Object entity);
+	Serializable insert(Object entity);
 
 	/**
 	 * Insert a row.
 	 *
 	 * @param entityName The entityName for the entity to be inserted
 	 * @param entity a new transient instance
+	 *
 	 * @return the identifier of the instance
 	 */
-	public Serializable insert(String entityName, Object entity);
+	Serializable insert(String entityName, Object entity);
 
 	/**
 	 * Update a row.
 	 *
 	 * @param entity a detached entity instance
 	 */
-	public void update(Object entity);
+	void update(Object entity);
 
 	/**
 	 * Update a row.
@@ -77,14 +63,14 @@ public interface StatelessSession extends SharedSessionContract {
 	 * @param entityName The entityName for the entity to be updated
 	 * @param entity a detached entity instance
 	 */
-	public void update(String entityName, Object entity);
+	void update(String entityName, Object entity);
 
 	/**
 	 * Delete a row.
 	 *
 	 * @param entity a detached entity instance
 	 */
-	public void delete(Object entity);
+	void delete(Object entity);
 
 	/**
 	 * Delete a row.
@@ -92,42 +78,56 @@ public interface StatelessSession extends SharedSessionContract {
 	 * @param entityName The entityName for the entity to be deleted
 	 * @param entity a detached entity instance
 	 */
-	public void delete(String entityName, Object entity);
+	void delete(String entityName, Object entity);
 
 	/**
 	 * Retrieve a row.
 	 *
+	 * @param entityName The name of the entity to retrieve
+	 * @param id The id of the entity to retrieve
+	 *
 	 * @return a detached entity instance
 	 */
-	public Object get(String entityName, Serializable id);
+	Object get(String entityName, Serializable id);
 
 	/**
 	 * Retrieve a row.
 	 *
+	 * @param entityClass The class of the entity to retrieve
+	 * @param id The id of the entity to retrieve
+	 *
 	 * @return a detached entity instance
 	 */
-	public Object get(Class entityClass, Serializable id);
+	Object get(Class entityClass, Serializable id);
 
 	/**
 	 * Retrieve a row, obtaining the specified lock mode.
 	 *
+	 * @param entityName The name of the entity to retrieve
+	 * @param id The id of the entity to retrieve
+	 * @param lockMode The lock mode to apply to the entity
+	 *
 	 * @return a detached entity instance
 	 */
-	public Object get(String entityName, Serializable id, LockMode lockMode);
+	Object get(String entityName, Serializable id, LockMode lockMode);
 
 	/**
 	 * Retrieve a row, obtaining the specified lock mode.
 	 *
+	 * @param entityClass The class of the entity to retrieve
+	 * @param id The id of the entity to retrieve
+	 * @param lockMode The lock mode to apply to the entity
+	 *
 	 * @return a detached entity instance
 	 */
-	public Object get(Class entityClass, Serializable id, LockMode lockMode);
+	Object get(Class entityClass, Serializable id, LockMode lockMode);
 
 	/**
 	 * Refresh the entity instance state from the database.
 	 *
 	 * @param entity The entity to be refreshed.
 	 */
-	public void refresh(Object entity);
+	void refresh(Object entity);
 
 	/**
 	 * Refresh the entity instance state from the database.
@@ -135,7 +135,7 @@ public interface StatelessSession extends SharedSessionContract {
 	 * @param entityName The entityName for the entity to be refreshed.
 	 * @param entity The entity to be refreshed.
 	 */
-	public void refresh(String entityName, Object entity);
+	void refresh(String entityName, Object entity);
 
 	/**
 	 * Refresh the entity instance state from the database.
@@ -143,7 +143,7 @@ public interface StatelessSession extends SharedSessionContract {
 	 * @param entity The entity to be refreshed.
 	 * @param lockMode The LockMode to be applied.
 	 */
-	public void refresh(Object entity, LockMode lockMode);
+	void refresh(Object entity, LockMode lockMode);
 
 	/**
 	 * Refresh the entity instance state from the database.
@@ -152,7 +152,7 @@ public interface StatelessSession extends SharedSessionContract {
 	 * @param entity The entity to be refreshed.
 	 * @param lockMode The LockMode to be applied.
 	 */
-	public void refresh(String entityName, Object entity, LockMode lockMode);
+	void refresh(String entityName, Object entity, LockMode lockMode);
 
 	/**
 	 * Returns the current JDBC connection associated with this
@@ -164,7 +164,9 @@ public interface StatelessSession extends SharedSessionContract {
 	 * application should not close the connection.
 	 *
 	 * @deprecated just missed when deprecating same method from {@link Session}
+	 *
+	 * @return The connection associated with this stateless session
 	 */
 	@Deprecated
-	public Connection connection();
+	Connection connection();
 }

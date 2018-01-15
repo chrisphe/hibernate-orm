@@ -1,25 +1,8 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2010, Red Hat Inc. or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Inc.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.type;
 
@@ -31,7 +14,7 @@ import org.hibernate.HibernateException;
 import org.hibernate.MappingException;
 import org.hibernate.collection.spi.PersistentCollection;
 import org.hibernate.engine.spi.SessionFactoryImplementor;
-import org.hibernate.engine.spi.SessionImplementor;
+import org.hibernate.engine.spi.SharedSessionContractImplementor;
 import org.hibernate.persister.collection.CollectionPersister;
 import org.hibernate.usertype.LoggableUserType;
 import org.hibernate.usertype.UserCollectionType;
@@ -52,16 +35,19 @@ public class CustomCollectionType extends CollectionType {
 			TypeFactory.TypeScope typeScope,
 			Class userTypeClass,
 			String role,
-			String foreignKeyPropertyName,
-			boolean isEmbeddedInXML) {
-		super( typeScope, role, foreignKeyPropertyName, isEmbeddedInXML );
+			String foreignKeyPropertyName) {
+		super( typeScope, role, foreignKeyPropertyName );
+		userType = createUserCollectionType( userTypeClass );
+		customLogging = LoggableUserType.class.isAssignableFrom( userTypeClass );
+	}
 
+	private static UserCollectionType createUserCollectionType(Class userTypeClass) {
 		if ( !UserCollectionType.class.isAssignableFrom( userTypeClass ) ) {
 			throw new MappingException( "Custom type does not implement UserCollectionType: " + userTypeClass.getName() );
 		}
 
 		try {
-			userType = ( UserCollectionType ) userTypeClass.newInstance();
+			return ( UserCollectionType ) userTypeClass.newInstance();
 		}
 		catch ( InstantiationException ie ) {
 			throw new MappingException( "Cannot instantiate custom type: " + userTypeClass.getName() );
@@ -69,46 +55,55 @@ public class CustomCollectionType extends CollectionType {
 		catch ( IllegalAccessException iae ) {
 			throw new MappingException( "IllegalAccessException trying to instantiate custom type: " + userTypeClass.getName() );
 		}
-
-		customLogging = LoggableUserType.class.isAssignableFrom( userTypeClass );
 	}
 
-	public PersistentCollection instantiate(SessionImplementor session, CollectionPersister persister, Serializable key)
+	@Override
+	public PersistentCollection instantiate(SharedSessionContractImplementor session, CollectionPersister persister, Serializable key)
 	throws HibernateException {
-		return userType.instantiate(session, persister);
+		return userType.instantiate( session, persister );
 	}
 
-	public PersistentCollection wrap(SessionImplementor session, Object collection) {
-		return userType.wrap(session, collection);
+	@Override
+	public PersistentCollection wrap(SharedSessionContractImplementor session, Object collection) {
+		return userType.wrap( session, collection );
 	}
 
+	@Override
 	public Class getReturnedClass() {
 		return userType.instantiate( -1 ).getClass();
 	}
 
+	@Override
 	public Object instantiate(int anticipatedType) {
 		return userType.instantiate( anticipatedType );
 	}
 
+	@Override
 	public Iterator getElementsIterator(Object collection) {
 		return userType.getElementsIterator(collection);
 	}
-	public boolean contains(Object collection, Object entity, SessionImplementor session) {
+
+	@Override
+	public boolean contains(Object collection, Object entity, SharedSessionContractImplementor session) {
 		return userType.contains(collection, entity);
 	}
+
+	@Override
 	public Object indexOf(Object collection, Object entity) {
 		return userType.indexOf(collection, entity);
 	}
 
-	public Object replaceElements(Object original, Object target, Object owner, Map copyCache, SessionImplementor session)
+	@Override
+	public Object replaceElements(Object original, Object target, Object owner, Map copyCache, SharedSessionContractImplementor session)
 	throws HibernateException {
-		CollectionPersister cp = session.getFactory().getCollectionPersister( getRole() );
+		CollectionPersister cp = session.getFactory().getMetamodel().collectionPersister( getRole() );
 		return userType.replaceElements(original, target, cp, owner, copyCache, session);
 	}
 
+	@Override
 	protected String renderLoggableString(Object value, SessionFactoryImplementor factory) throws HibernateException {
 		if ( customLogging ) {
-			return ( ( LoggableUserType ) userType ).toLoggableString( value, factory );
+			return ( (LoggableUserType) userType ).toLoggableString( value, factory );
 		}
 		else {
 			return super.renderLoggableString( value, factory );

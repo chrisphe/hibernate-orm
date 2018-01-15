@@ -1,43 +1,48 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2010-2011, Red Hat Inc. or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Inc.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.testing.env;
 
+import java.io.PrintWriter;
+import java.lang.reflect.InvocationHandler;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.lang.reflect.Proxy;
+import java.sql.Connection;
+import java.sql.SQLException;
+import java.sql.SQLFeatureNotSupportedException;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Properties;
+import java.util.logging.Logger;
 
+import javax.sql.DataSource;
+
+import javassist.scopedpool.SoftValueHashMap;
+
+import org.hibernate.annotations.common.reflection.ReflectionUtil;
 import org.hibernate.cfg.Environment;
 import org.hibernate.dialect.Dialect;
-import org.hibernate.dialect.H2Dialect;
-import org.hibernate.service.jdbc.connections.internal.DriverManagerConnectionProviderImpl;
+import org.hibernate.engine.jdbc.connections.internal.DatasourceConnectionProviderImpl;
+import org.hibernate.engine.jdbc.connections.internal.DriverManagerConnectionProviderImpl;
+import org.hibernate.internal.util.ReflectHelper;
+
+import org.hibernate.testing.DialectCheck;
 
 /**
  * Defines the JDBC connection information (currently H2) used by Hibernate for unit (not functional!) tests
  *
  * @author Steve Ebersole
  */
-public class ConnectionProviderBuilder {
+public class ConnectionProviderBuilder implements DialectCheck {
 	public static final String DRIVER = "org.h2.Driver";
-	public static final String URL = "jdbc:h2:mem:%s;DB_CLOSE_DELAY=-1;MVCC=TRUE";
+	public static final String DATA_SOURCE = "org.h2.jdbcx.JdbcDataSource";
+//	public static final String URL = "jdbc:h2:mem:%s;DB_CLOSE_DELAY=-1;MVCC=TRUE";
+	public static final String URL = "jdbc:h2:mem:%s;DB_CLOSE_DELAY=-1";
 	public static final String USER = "sa";
 	public static final String PASS = "";
 
@@ -62,6 +67,98 @@ public class ConnectionProviderBuilder {
 		return buildConnectionProvider( getConnectionProviderProperties( dbName ), false );
 	}
 
+	public static DatasourceConnectionProviderImpl buildDataSourceConnectionProvider(String dbName) {
+		try {
+			Class dataSourceClass = ReflectHelper.classForName( DATA_SOURCE, ConnectionProviderBuilder.class );
+			DataSource actualDataSource = (DataSource) dataSourceClass.newInstance();
+			ReflectHelper.findSetterMethod( dataSourceClass, "URL", String.class ).invoke(
+					actualDataSource,
+					String.format( URL, dbName )
+			);
+			ReflectHelper.findSetterMethod( dataSourceClass, "user", String.class ).invoke( actualDataSource, USER );
+			ReflectHelper.findSetterMethod( dataSourceClass, "password", String.class )
+					.invoke( actualDataSource, PASS );
+
+			final DataSourceInvocationHandler dataSourceInvocationHandler = new DataSourceInvocationHandler(
+					actualDataSource );
+
+			DatasourceConnectionProviderImpl connectionProvider = new DatasourceConnectionProviderImpl() {
+				@Override
+				public void stop() {
+					dataSourceInvocationHandler.stop();
+				}
+			};
+
+			connectionProvider.configure(
+					Collections.singletonMap(
+							Environment.DATASOURCE,
+							Proxy.newProxyInstance(
+									Thread.currentThread().getContextClassLoader(),
+									new Class[] {DataSource.class},
+									dataSourceInvocationHandler
+							)
+					)
+			);
+			return connectionProvider;
+		}
+		catch (Exception e) {
+			throw new IllegalArgumentException( e );
+		}
+	}
+
+	private static class DataSourceInvocationHandler implements InvocationHandler {
+
+		private final DataSource target;
+
+		private Connection actualConnection;
+
+		private Connection connectionProxy;
+
+		public DataSourceInvocationHandler(DataSource target) {
+			this.target = target;
+		}
+
+		@Override
+		public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
+			if ("getConnection".equals(method.getName())) {
+				if(actualConnection == null) {
+					actualConnection = (Connection) method.invoke( target, args);
+					connectionProxy = (Connection) Proxy.newProxyInstance(
+							this.getClass().getClassLoader(),
+							new Class[] { Connection.class },
+							new ConnectionInvocationHandler( actualConnection )
+					);
+				}
+			}
+			return connectionProxy;
+		}
+
+		private class ConnectionInvocationHandler implements InvocationHandler {
+
+			private final Connection target;
+
+			public ConnectionInvocationHandler(Connection target) {
+				this.target = target;
+			}
+
+			@Override
+			public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
+				if ("close".equals(method.getName())) {
+					//Do nothing
+					return null;
+				}
+				return method.invoke(target, args);
+			}
+		}
+
+		public void stop() {
+			try {
+				actualConnection.close();
+			}
+			catch (SQLException ignore) {}
+		}
+	}
+
 	public static DriverManagerConnectionProviderImpl buildConnectionProvider(final boolean allowAggressiveRelease) {
 		return buildConnectionProvider( getConnectionProviderProperties( "db1" ), allowAggressiveRelease );
 	}
@@ -77,6 +174,11 @@ public class ConnectionProviderBuilder {
 	}
 
 	public static Dialect getCorrespondingDialect() {
-		return new H2Dialect();
+		return TestingDatabaseInfo.DIALECT;
+	}
+
+	@Override
+	public boolean isMatch(Dialect dialect) {
+		return getCorrespondingDialect().getClass().equals( dialect.getClass() );
 	}
 }

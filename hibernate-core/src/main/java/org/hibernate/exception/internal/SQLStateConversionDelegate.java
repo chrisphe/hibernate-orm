@@ -1,25 +1,8 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2012, Red Hat Inc. or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Inc.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.exception.internal;
 
@@ -112,7 +95,8 @@ public class SQLStateConversionDelegate extends AbstractSQLExceptionConversionDe
 
 	@Override
 	public JDBCException convert(SQLException sqlException, String message, String sql) {
-		String sqlState = JdbcExceptionHelper.extractSqlState( sqlException );
+		final String sqlState = JdbcExceptionHelper.extractSqlState( sqlException );
+		final int errorCode = JdbcExceptionHelper.extractErrorCode( sqlException );
 
 		if ( sqlState != null ) {
 			String sqlStateClassCode = JdbcExceptionHelper.determineSqlStateClassCode( sqlState );
@@ -139,11 +123,6 @@ public class SQLStateConversionDelegate extends AbstractSQLExceptionConversionDe
 				return new LockAcquisitionException( message, sqlException, sql );
 			}
 
-			if ( "61000".equals( sqlState ) ) {
-				// oracle sql-state code for deadlock
-				return new LockAcquisitionException( message, sqlException, sql );
-			}
-
 			if ( "40XL1".equals( sqlState ) || "40XL2".equals( sqlState )) {
 				// Derby "A lock could not be obtained within the time requested."
 				return new PessimisticLockException( message, sqlException, sql );
@@ -151,8 +130,8 @@ public class SQLStateConversionDelegate extends AbstractSQLExceptionConversionDe
 
 			// MySQL Query execution was interrupted
 			if ( "70100".equals( sqlState ) ||
-				// Oracle user requested cancel of current operation
-				  "72000".equals( sqlState ) ) {
+					// Oracle user requested cancel of current operation
+					( "72000".equals( sqlState ) && errorCode == 1013 ) ) {
 				throw new QueryTimeoutException(  message, sqlException, sql );
 			}
 		}

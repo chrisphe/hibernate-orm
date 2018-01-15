@@ -1,38 +1,23 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2010, Red Hat Inc. or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Inc.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.dialect;
+
 import java.sql.Types;
 
 import org.hibernate.cfg.Environment;
+import org.hibernate.dialect.identity.IdentityColumnSupport;
+import org.hibernate.dialect.identity.JDataStoreIdentityColumnSupport;
 
 /**
- * A <tt>Dialect</tt> for JDataStore.
+ * A Dialect for JDataStore.
  * 
  * @author Vishy Kasar
  */
 public class JDataStoreDialect extends Dialect {
-
 	/**
 	 * Creates new JDataStoreDialect
 	 */
@@ -60,40 +45,39 @@ public class JDataStoreDialect extends Dialect {
 		getDefaultProperties().setProperty( Environment.STATEMENT_BATCH_SIZE, DEFAULT_BATCH_SIZE );
 	}
 
+	@Override
 	public String getAddColumnString() {
 		return "add";
 	}
 
+	@Override
 	public boolean dropConstraints() {
 		return false;
 	}
 
+	@Override
 	public String getCascadeConstraintsString() {
 		return " cascade";
 	}
 
-	public boolean supportsIdentityColumns() {
-		return true;
-	}
-
-	public String getIdentitySelectString() {
-		return null; // NOT_SUPPORTED_SHOULD_USE_JDBC3_PreparedStatement.getGeneratedKeys_method
-	}
-
-	public String getIdentityColumnString() {
-		return "autoincrement";
-	}
-
+	@Override
 	public String getNoColumnsInsertString() {
 		return "default values";
 	}
 
+	@Override
 	public boolean supportsColumnCheck() {
 		return false;
 	}
 
+	@Override
 	public boolean supportsTableCheck() {
 		return false;
+	}
+
+	@Override
+	public IdentityColumnSupport getIdentityColumnSupport() {
+		return new JDataStoreIdentityColumnSupport();
 	}
 
 }

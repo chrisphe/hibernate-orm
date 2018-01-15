@@ -1,25 +1,8 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2010, Red Hat Inc. or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Inc.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.dialect.lock;
 
@@ -30,7 +13,7 @@ import org.hibernate.LockMode;
 import org.hibernate.OptimisticLockException;
 import org.hibernate.action.internal.EntityVerifyVersionProcess;
 import org.hibernate.engine.spi.EntityEntry;
-import org.hibernate.engine.spi.SessionImplementor;
+import org.hibernate.engine.spi.SharedSessionContractImplementor;
 import org.hibernate.event.spi.EventSource;
 import org.hibernate.persister.entity.Lockable;
 
@@ -42,8 +25,8 @@ import org.hibernate.persister.entity.Lockable;
  * @author Scott Marlow
  * @since 3.5
  */
+@SuppressWarnings("deprecation")
 public class OptimisticLockingStrategy implements LockingStrategy {
-
 	private final Lockable lockable;
 	private final LockMode lockMode;
 
@@ -62,15 +45,13 @@ public class OptimisticLockingStrategy implements LockingStrategy {
 	}
 
 	@Override
-	public void lock(Serializable id, Object version, Object object, int timeout, SessionImplementor session) {
+	public void lock(Serializable id, Object version, Object object, int timeout, SharedSessionContractImplementor session) {
 		if ( !lockable.isVersioned() ) {
 			throw new OptimisticLockException( object, "[" + lockMode + "] not supported for non-versioned entities [" + lockable.getEntityName() + "]" );
 		}
-		EntityEntry entry = session.getPersistenceContext().getEntry(object);
-		EventSource source = (EventSource)session;
-		EntityVerifyVersionProcess verifyVersion = new EntityVerifyVersionProcess(object, entry);
+		final EntityEntry entry = session.getPersistenceContext().getEntry( object );
 		// Register the EntityVerifyVersionProcess action to run just prior to transaction commit.
-		source.getActionQueue().registerProcess(verifyVersion);
+		( (EventSource) session ).getActionQueue().registerProcess( new EntityVerifyVersionProcess( object, entry ) );
 	}
 
 	protected LockMode getLockMode() {

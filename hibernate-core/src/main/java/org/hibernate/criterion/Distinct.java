@@ -1,92 +1,87 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2008, Red Hat Middleware LLC or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Middleware LLC.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
- *
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.criterion;
+
 import org.hibernate.Criteria;
-import org.hibernate.HibernateException;
 import org.hibernate.type.Type;
 
 /**
+ * A wrappedProjection that is a wrapper around other projections to apply distinction.
+ *
  * @author Gavin King
  */
 public class Distinct implements EnhancedProjection {
+	private final Projection wrappedProjection;
 
-	private final Projection projection;
-	
-	public Distinct(Projection proj) {
-		this.projection = proj;
+	/**
+	 * Constructs a Distinct
+	 *
+	 * @param wrappedProjection The wrapped projection
+	 */
+	public Distinct(Projection wrappedProjection) {
+		this.wrappedProjection = wrappedProjection;
 	}
 
-	public String toSqlString(Criteria criteria, int position, CriteriaQuery criteriaQuery)
-			throws HibernateException {
-		return "distinct " + projection.toSqlString(criteria, position, criteriaQuery);
+	@Override
+	public String toSqlString(Criteria criteria, int position, CriteriaQuery criteriaQuery) {
+		return "distinct " + wrappedProjection.toSqlString( criteria, position, criteriaQuery );
 	}
 
-	public String toGroupSqlString(Criteria criteria, CriteriaQuery criteriaQuery)
-			throws HibernateException {
-		return projection.toGroupSqlString(criteria, criteriaQuery);
+	@Override
+	public String toGroupSqlString(Criteria criteria, CriteriaQuery criteriaQuery) {
+		return wrappedProjection.toGroupSqlString( criteria, criteriaQuery );
 	}
 
-	public Type[] getTypes(Criteria criteria, CriteriaQuery criteriaQuery)
-			throws HibernateException {
-		return projection.getTypes(criteria, criteriaQuery);
+	@Override
+	public Type[] getTypes(Criteria criteria, CriteriaQuery criteriaQuery) {
+		return wrappedProjection.getTypes( criteria, criteriaQuery );
 	}
 
-	public Type[] getTypes(String alias, Criteria criteria, CriteriaQuery criteriaQuery)
-			throws HibernateException {
-		return projection.getTypes(alias, criteria, criteriaQuery);
+	@Override
+	public Type[] getTypes(String alias, Criteria criteria, CriteriaQuery criteriaQuery) {
+		return wrappedProjection.getTypes( alias, criteria, criteriaQuery );
 	}
 
+	@Override
 	public String[] getColumnAliases(int loc) {
-		return projection.getColumnAliases(loc);
+		return wrappedProjection.getColumnAliases( loc );
 	}
 
+	@Override
 	public String[] getColumnAliases(int loc, Criteria criteria, CriteriaQuery criteriaQuery) {
-		return projection instanceof EnhancedProjection ?
-				( ( EnhancedProjection ) projection ).getColumnAliases( loc, criteria, criteriaQuery ) :
-				getColumnAliases( loc );
+		return wrappedProjection instanceof EnhancedProjection
+				? ( (EnhancedProjection) wrappedProjection).getColumnAliases( loc, criteria, criteriaQuery )
+				: getColumnAliases( loc );
 	}
 
+	@Override
 	public String[] getColumnAliases(String alias, int loc) {
-		return projection.getColumnAliases(alias, loc);
+		return wrappedProjection.getColumnAliases( alias, loc );
 	}
 
+	@Override
 	public String[] getColumnAliases(String alias, int loc, Criteria criteria, CriteriaQuery criteriaQuery) {
-		return projection instanceof EnhancedProjection ?
-				( ( EnhancedProjection ) projection ).getColumnAliases( alias, loc, criteria, criteriaQuery ) :
-				getColumnAliases( alias, loc );
+		return wrappedProjection instanceof EnhancedProjection
+				? ( (EnhancedProjection) wrappedProjection).getColumnAliases( alias, loc, criteria, criteriaQuery )
+				: getColumnAliases( alias, loc );
 	}
 
+	@Override
 	public String[] getAliases() {
-		return projection.getAliases();
+		return wrappedProjection.getAliases();
 	}
 
+	@Override
 	public boolean isGrouped() {
-		return projection.isGrouped();
+		return wrappedProjection.isGrouped();
 	}
 
+	@Override
 	public String toString() {
-		return "distinct " + projection.toString();
+		return "distinct " + wrappedProjection.toString();
 	}
 }

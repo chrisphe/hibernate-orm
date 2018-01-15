@@ -1,25 +1,8 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2008-2011, Red Hat Inc. or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Inc.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.engine.spi;
 
@@ -35,19 +18,36 @@ import java.io.Serializable;
 public final class AssociationKey implements Serializable {
 	private EntityKey ownerKey;
 	private String propertyName;
-	
+
+	/**
+	 * Constructs an AssociationKey
+	 *
+	 * @param ownerKey The EntityKey of the association owner
+	 * @param propertyName The name of the property on the owner which defines the association
+	 */
 	public AssociationKey(EntityKey ownerKey, String propertyName) {
 		this.ownerKey = ownerKey;
 		this.propertyName = propertyName;
 	}
-	
-	public boolean equals(Object that) {
-		AssociationKey key = (AssociationKey) that;
-		return key.propertyName.equals(propertyName) && 
-			key.ownerKey.equals(ownerKey);
+
+	@Override
+	public boolean equals(Object o) {
+		if ( this == o ) {
+			return true;
+		}
+		if ( o == null || getClass() != o.getClass() ) {
+			return false;
+		}
+
+		final AssociationKey that = (AssociationKey) o;
+		return ownerKey.equals( that.ownerKey )
+				&& propertyName.equals( that.propertyName );
 	}
-	
+
+	@Override
 	public int hashCode() {
-		return ownerKey.hashCode() + propertyName.hashCode();
+		int result = ownerKey.hashCode();
+		result = 31 * result + propertyName.hashCode();
+		return result;
 	}
 }

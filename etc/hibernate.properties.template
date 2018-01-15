@@ -43,8 +43,6 @@ hibernate.connection.url @DB_URL@
 
 
 #hibernate.dialect org.hibernate.dialect.MySQLDialect
-#hibernate.dialect org.hibernate.dialect.MySQLInnoDBDialect
-#hibernate.dialect org.hibernate.dialect.MySQLMyISAMDialect
 #hibernate.connection.driver_class org.gjt.mm.mysql.Driver
 #hibernate.connection.driver_class com.mysql.jdbc.Driver
 #hibernate.connection.url jdbc:mysql:///test
@@ -213,6 +211,15 @@ hibernate.connection.url @DB_URL@
 #hibernate.connection.password hibernate
 
 
+## HANA
+
+#hibernate.dialect org.hibernate.dialect.HANAColumnStoreDialect
+#hibernate.connection.driver_class com.sap.db.jdbc.Driver
+#hibernate.connection.url jdbc:sap://localhost:30015
+#hibernate.connection.username HIBERNATE_TEST
+#hibernate.connection.password H1bernate_test
+
+
 
 #################################
 ### Hibernate Connection Pool ###
@@ -356,7 +363,7 @@ hibernate.default_batch_fetch_size 8
 
 ## rollback generated identifier values of deleted entities to default values
 
-#hibernate.use_identifer_rollback true
+#hibernate.use_identifier_rollback true
 
 
 ## enable bytecode reflection optimizer (disabled by default)
@@ -424,7 +431,7 @@ hibernate.jdbc.use_streams_for_binary true
 ### Second-level Cache ###
 ##########################
 
-## optimize chache for minimal "puts" instead of minimal "gets" (good for clustered cache)
+## optimize cache for minimal "puts" instead of minimal "gets" (good for clustered cache)
 
 #hibernate.cache.use_minimal_puts true
 

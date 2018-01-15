@@ -1,45 +1,29 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2008, Red Hat Middleware LLC or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Middleware LLC.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
- *
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.loader.custom.sql;
+
+import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-
-import org.jboss.logging.Logger;
 
 import org.hibernate.HibernateException;
 import org.hibernate.engine.query.spi.sql.NativeSQLQueryReturn;
 import org.hibernate.engine.spi.SessionFactoryImplementor;
 import org.hibernate.internal.CoreMessageLogger;
 import org.hibernate.loader.custom.CustomQuery;
+import org.hibernate.param.ParameterBinder;
 import org.hibernate.persister.collection.SQLLoadableCollection;
 import org.hibernate.persister.entity.SQLLoadable;
+
+import org.jboss.logging.Logger;
 
 /**
  * Implements Hibernate's built-in support for native SQL queries.
@@ -50,13 +34,15 @@ import org.hibernate.persister.entity.SQLLoadable;
  * @author Max Andersen
  * @author Steve Ebersole
  */
-public class SQLCustomQuery implements CustomQuery {
+public class SQLCustomQuery implements CustomQuery, Serializable {
 
 	private static final CoreMessageLogger LOG = Logger.getMessageLogger( CoreMessageLogger.class, SQLCustomQuery.class.getName() );
 
 	private final String sql;
 	private final Set querySpaces = new HashSet();
-	private final Map namedParameterBindPoints = new HashMap();
+
+	private final List<ParameterBinder> paramValueBinders;
+
 	private final List customQueryReturns = new ArrayList();
 
 
@@ -68,8 +54,9 @@ public class SQLCustomQuery implements CustomQuery {
 		return querySpaces;
 	}
 
-	public Map getNamedParameterBindPoints() {
-		return namedParameterBindPoints;
+	@Override
+	public List<ParameterBinder > getParameterValueBinders() {
+		return paramValueBinders;
 	}
 
 	public List getCustomQueryReturns() {
@@ -131,7 +118,8 @@ public class SQLCustomQuery implements CustomQuery {
 
 		SQLQueryParser parser = new SQLQueryParser( sqlQuery, new ParserContext( aliasContext ), factory );
 		this.sql = parser.process();
-		this.namedParameterBindPoints.putAll( parser.getNamedParameters() );
+
+		this.paramValueBinders = parser.getParameterValueBinders();
 
 //		SQLQueryParser parser = new SQLQueryParser(
 //				sqlQuery,

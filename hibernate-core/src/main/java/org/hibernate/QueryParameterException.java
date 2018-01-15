@@ -1,50 +1,39 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2008, Red Hat Middleware LLC or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Middleware LLC.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
- *
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate;
 
-
 /**
- * Parameter invalid or not found in the query
+ * Parameter invalid or not found in the query.
  * 
  * @author Emmanuel Bernard
  */
 public class QueryParameterException extends QueryException {
-
-	public QueryParameterException(Exception e) {
-		super( e );
-	}
-
+	/**
+	 * Constructs a QueryParameterException using the supplied exception message.
+	 *
+	 * @param message The message explaining the exception condition
+	 */
 	public QueryParameterException(String message) {
 		super( message );
 	}
 
-	public QueryParameterException(String message, Throwable e) {
-		super( message, e );
+	/**
+	 * Constructs a QueryParameterException
+	 *
+	 * @param message The message explaining the exception condition
+	 * @param queryString The query that led to the exception
+	 * @param cause The underlying cause
+	 */
+	public QueryParameterException(String message, String queryString, Exception cause) {
+		super( message, queryString, cause );
 	}
 
-	public QueryParameterException(String message, String queryString) {
-		super( message, queryString );
+	@Override
+	protected QueryException generateQueryException(String queryString) {
+		return new QueryParameterException( super.getOriginalMessage(), queryString, this );
 	}
 }

@@ -1,25 +1,8 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2011, Red Hat Inc. or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Inc.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.cache.ehcache.internal.regions;
 
@@ -27,13 +10,13 @@ import java.util.Properties;
 
 import net.sf.ehcache.Ehcache;
 
+import org.hibernate.boot.spi.SessionFactoryOptions;
 import org.hibernate.cache.CacheException;
 import org.hibernate.cache.ehcache.internal.strategy.EhcacheAccessStrategyFactory;
 import org.hibernate.cache.spi.CacheDataDescription;
 import org.hibernate.cache.spi.EntityRegion;
 import org.hibernate.cache.spi.access.AccessType;
 import org.hibernate.cache.spi.access.EntityRegionAccessStrategy;
-import org.hibernate.cfg.Settings;
 
 /**
  * An entity region specific wrapper around an Ehcache instance.
@@ -46,22 +29,26 @@ import org.hibernate.cfg.Settings;
  * @author Alex Snaps
  */
 public class EhcacheEntityRegion extends EhcacheTransactionalDataRegion implements EntityRegion {
+	/**
+	 * Constructs an EhcacheCollectionRegion around the given underlying cache.
+	 *
+	 * @param accessStrategyFactory The factory for building needed EntityRegionAccessStrategy instance
+	 * @param underlyingCache The ehcache cache instance
+	 * @param settings The Hibernate settings
+	 * @param metadata Metadata about the data to be cached in this region
+	 * @param properties Any additional[ properties
+	 */
+	public EhcacheEntityRegion(
+			EhcacheAccessStrategyFactory accessStrategyFactory,
+			Ehcache underlyingCache,
+			SessionFactoryOptions settings,
+			CacheDataDescription metadata,
+			Properties properties) {
+		super( accessStrategyFactory, underlyingCache, settings, metadata, properties );
+	}
 
-
-    /**
-     * Constructs an EhcacheEntityRegion around the given underlying cache.
-     *
-     * @param accessStrategyFactory
-     */
-    public EhcacheEntityRegion(EhcacheAccessStrategyFactory accessStrategyFactory, Ehcache underlyingCache, Settings settings,
-                               CacheDataDescription metadata, Properties properties) {
-        super( accessStrategyFactory, underlyingCache, settings, metadata, properties );
-    }
-
-    /**
-     * {@inheritDoc}
-     */
-    public EntityRegionAccessStrategy buildAccessStrategy(AccessType accessType) throws CacheException {
-        return accessStrategyFactory.createEntityRegionAccessStrategy( this, accessType );
-    }
+	@Override
+	public EntityRegionAccessStrategy buildAccessStrategy(AccessType accessType) throws CacheException {
+		return getAccessStrategyFactory().createEntityRegionAccessStrategy( this, accessType );
+	}
 }

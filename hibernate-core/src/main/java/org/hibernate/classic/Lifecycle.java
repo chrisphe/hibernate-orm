@@ -1,26 +1,8 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2008, Red Hat Middleware LLC or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Middleware LLC.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
- *
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.classic;
 import java.io.Serializable;
@@ -75,7 +57,7 @@ public interface Lifecycle {
 	 * Called when an entity is saved.
 	 * @param s the session
 	 * @return true to veto save
-	 * @throws CallbackException
+	 * @throws CallbackException Indicates a problem happened during callback
 	 */
 	public boolean onSave(Session s) throws CallbackException;
 
@@ -85,7 +67,7 @@ public interface Lifecycle {
 	 * state is persisted during a flush.
 	 * @param s the session
 	 * @return true to veto update
-	 * @throws CallbackException
+	 * @throws CallbackException Indicates a problem happened during callback
 	 */
 	public boolean onUpdate(Session s) throws CallbackException;
 
@@ -93,7 +75,7 @@ public interface Lifecycle {
 	 * Called when an entity is deleted.
 	 * @param s the session
 	 * @return true to veto delete
-	 * @throws CallbackException
+	 * @throws CallbackException Indicates a problem happened during callback
 	 */
 	public boolean onDelete(Session s) throws CallbackException;
 
@@ -108,9 +90,3 @@ public interface Lifecycle {
 	 */
 	public void onLoad(Session s, Serializable id);
 }
-
-
-
-
-
-

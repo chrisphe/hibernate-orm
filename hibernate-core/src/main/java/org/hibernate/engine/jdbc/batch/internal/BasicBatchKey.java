@@ -1,25 +1,8 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2011, Red Hat Inc. or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Inc.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.engine.jdbc.batch.internal;
 
@@ -27,6 +10,8 @@ import org.hibernate.engine.jdbc.batch.spi.BatchKey;
 import org.hibernate.jdbc.Expectation;
 
 /**
+ * Normal implementation of BatchKey
+ *
  * @author Steve Ebersole
  */
 public class BasicBatchKey implements BatchKey {
@@ -34,19 +19,12 @@ public class BasicBatchKey implements BatchKey {
 	private final int statementCount;
 	private final Expectation expectation;
 
-//	public BasicBatchKey(String comparison, int statementCount, Expectation expectation) {
-//		this.comparison = comparison;
-//		this.statementCount = statementCount;
-//		this.expectations = new Expectation[statementCount];
-//		Arrays.fill( this.expectations, expectation );
-//	}
-//
-//	public BasicBatchKey(String comparison, Expectation... expectations) {
-//		this.comparison = comparison;
-//		this.statementCount = expectations.length;
-//		this.expectations = expectations;
-//	}
-
+	/**
+	 * Constructs a BasicBatchKey
+	 *
+	 * @param comparison A string used to compare batch keys.
+	 * @param expectation The expectation for the batch
+	 */
 	public BasicBatchKey(String comparison, Expectation expectation) {
 		this.comparison = comparison;
 		this.statementCount = 1;
@@ -72,13 +50,8 @@ public class BasicBatchKey implements BatchKey {
 			return false;
 		}
 
-		BasicBatchKey that = (BasicBatchKey) o;
-
-		if ( !comparison.equals( that.comparison ) ) {
-			return false;
-		}
-
-		return true;
+		final BasicBatchKey that = (BasicBatchKey) o;
+		return comparison.equals( that.comparison );
 	}
 
 	@Override

@@ -1,32 +1,17 @@
 /*
- * Copyright (c) 2009, Red Hat Middleware LLC or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Middleware LLC.
+ * Hibernate, Relational Persistence for Idiomatic Java
  *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.hql.internal.ast.tree;
+
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 
-import antlr.SemanticException;
-
+import antlr.collections.AST;
 import org.hibernate.HibernateException;
 import org.hibernate.engine.spi.SessionFactoryImplementor;
 import org.hibernate.hql.internal.NameGenerator;
@@ -40,20 +25,23 @@ import org.hibernate.transform.ResultTransformer;
 import org.hibernate.type.EntityType;
 import org.hibernate.type.Type;
 
+import antlr.SemanticException;
+
 /**
- * TODO : javadoc
+ * Tree node representing reference to the entry ({@link Map.Entry}) of a Map association.
  *
  * @author Steve Ebersole
  */
 public class MapEntryNode extends AbstractMapComponentNode implements AggregatedSelectExpression {
 	private static class LocalAliasGenerator implements AliasGenerator {
 		private final int base;
-		private int counter = 0;
+		private int counter;
 
 		private LocalAliasGenerator(int base) {
 			this.base = base;
 		}
 
+		@Override
 		public String generateAlias(String sqlExpression) {
 			return NameGenerator.scalarName( base, counter++ );
 		}
@@ -61,6 +49,7 @@ public class MapEntryNode extends AbstractMapComponentNode implements Aggregated
 
 	private int scalarColumnIndex = -1;
 
+	@Override
 	protected String expressionDescription() {
 		return "entry(*)";
 	}
@@ -70,9 +59,25 @@ public class MapEntryNode extends AbstractMapComponentNode implements Aggregated
 		return Map.Entry.class;
 	}
 
+
+	@Override
+	public void resolve(
+			boolean generateJoin,
+			boolean implicitJoin,
+			String classAlias,
+			AST parent,
+			AST parentPredicate) throws SemanticException {
+		if (parent != null) {
+			throw new SemanticException( expressionDescription() + " expression cannot be further de-referenced" );
+		}
+		super.resolve(generateJoin, implicitJoin, classAlias, parent, parentPredicate);
+	}
+
+	@Override
+	@SuppressWarnings("unchecked")
 	protected Type resolveType(QueryableCollection collectionPersister) {
-		Type keyType = collectionPersister.getIndexType();
-		Type valueType = collectionPersister.getElementType();
+		final Type keyType = collectionPersister.getIndexType();
+		final Type valueType = collectionPersister.getElementType();
 		types.add( keyType );
 		types.add( valueType );
 		mapEntryBuilder = new MapEntryBuilder();
@@ -81,6 +86,7 @@ public class MapEntryNode extends AbstractMapComponentNode implements Aggregated
 		return null;
 	}
 
+	@Override
 	protected String[] resolveColumns(QueryableCollection collectionPersister) {
 		List selections = new ArrayList();
 		determineKeySelectExpressions( collectionPersister, selections );
@@ -89,7 +95,7 @@ public class MapEntryNode extends AbstractMapComponentNode implements Aggregated
 		String text = "";
 		String[] columns = new String[selections.size()];
 		for ( int i = 0; i < selections.size(); i++ ) {
-			SelectExpression selectExpression = (SelectExpression) selections.get(i);
+			SelectExpression selectExpression = (SelectExpression) selections.get( i );
 			text += ( ", " + selectExpression.getExpression() + " as " + selectExpression.getAlias() );
 			columns[i] = selectExpression.getExpression();
 		}
@@ -104,13 +110,11 @@ public class MapEntryNode extends AbstractMapComponentNode implements Aggregated
 		AliasGenerator aliasGenerator = new LocalAliasGenerator( 0 );
 		appendSelectExpressions( collectionPersister.getIndexColumnNames(), selections, aliasGenerator );
 		Type keyType = collectionPersister.getIndexType();
-		if ( keyType.isAssociationType() ) {
-			EntityType entityType = (EntityType) keyType;
-			Queryable keyEntityPersister = ( Queryable ) sfi().getEntityPersister(
-					entityType.getAssociatedEntityName( sfi() )
-			);
+		if ( keyType.isEntityType() ) {
+			MapKeyEntityFromElement mapKeyEntityFromElement = findOrAddMapKeyEntityFromElement( collectionPersister );
+			Queryable keyEntityPersister = mapKeyEntityFromElement.getQueryable();
 			SelectFragment fragment = keyEntityPersister.propertySelectFragmentFragment(
-					collectionTableAlias(),
+					mapKeyEntityFromElement.getTableAlias(),
 					null,
 					false
 			);
@@ -118,6 +122,7 @@ public class MapEntryNode extends AbstractMapComponentNode implements Aggregated
 		}
 	}
 
+	@SuppressWarnings({"unchecked", "ForLoopReplaceableByForEach"})
 	private void appendSelectExpressions(String[] columnNames, List selections, AliasGenerator aliasGenerator) {
 		for ( int i = 0; i < columnNames.length; i++ ) {
 			selections.add(
@@ -129,6 +134,7 @@ public class MapEntryNode extends AbstractMapComponentNode implements Aggregated
 		}
 	}
 
+	@SuppressWarnings({"unchecked", "WhileLoopReplaceableByForEach"})
 	private void appendSelectExpressions(SelectFragment fragment, List selections, AliasGenerator aliasGenerator) {
 		Iterator itr = fragment.getColumns().iterator();
 		while ( itr.hasNext() ) {
@@ -145,7 +151,7 @@ public class MapEntryNode extends AbstractMapComponentNode implements Aggregated
 		Type valueType = collectionPersister.getElementType();
 		if ( valueType.isAssociationType() ) {
 			EntityType valueEntityType = (EntityType) valueType;
-			Queryable valueEntityPersister = ( Queryable ) sfi().getEntityPersister(
+			Queryable valueEntityPersister = (Queryable) sfi().getEntityPersister(
 					valueEntityType.getAssociatedEntityName( sfi() )
 			);
 			SelectFragment fragment = valueEntityPersister.propertySelectFragmentFragment(
@@ -176,10 +182,12 @@ public class MapEntryNode extends AbstractMapComponentNode implements Aggregated
 			this.alias = alias;
 		}
 
+		@Override
 		public String getExpression() {
 			return expression;
 		}
 
+		@Override
 		public String getAlias() {
 			return alias;
 		}
@@ -189,6 +197,7 @@ public class MapEntryNode extends AbstractMapComponentNode implements Aggregated
 		return getSessionFactoryHelper().getFactory();
 	}
 
+	@Override
 	public void setText(String s) {
 		if ( isResolved() ) {
 			return;
@@ -196,41 +205,49 @@ public class MapEntryNode extends AbstractMapComponentNode implements Aggregated
 		super.setText( s );
 	}
 
+	@Override
 	public void setScalarColumn(int i) throws SemanticException {
 		this.scalarColumnIndex = i;
 	}
 
+	@Override
 	public int getScalarColumnIndex() {
 		return scalarColumnIndex;
 	}
 
+	@Override
 	public void setScalarColumnText(int i) throws SemanticException {
 	}
 
+	@Override
 	public boolean isScalar() {
 		// Constructors are always considered scalar results.
 		return true;
 	}
 
-	private List types = new ArrayList(4); // size=4 to prevent resizing
+	private List types = new ArrayList( 4 ); // size=4 to prevent resizing
 
+	@Override
 	public List getAggregatedSelectionTypeList() {
 		return types;
 	}
 
-	private static final String[] ALIASES = { null, null };
+	private static final String[] ALIASES = {null, null};
 
+	@Override
 	public String[] getAggregatedAliases() {
 		return ALIASES;
 	}
 
 	private MapEntryBuilder mapEntryBuilder;
 
+	@Override
 	public ResultTransformer getResultTransformer() {
 		return mapEntryBuilder;
 	}
 
 	private static class MapEntryBuilder extends BasicTransformerAdapter {
+		@Override
 		public Object transformTuple(Object[] tuple, String[] aliases) {
 			if ( tuple.length != 2 ) {
 				throw new HibernateException( "Expecting exactly 2 tuples to transform into Map.Entry" );
@@ -248,20 +265,24 @@ public class MapEntryNode extends AbstractMapComponentNode implements Aggregated
 			this.value = value;
 		}
 
+		@Override
 		public Object getValue() {
 			return value;
 		}
 
+		@Override
 		public Object getKey() {
 			return key;
 		}
 
+		@Override
 		public Object setValue(Object value) {
 			Object old = this.value;
 			this.value = value;
 			return old;
 		}
 
+		@Override
 		public boolean equals(Object o) {
 			// IMPL NOTE : nulls are considered equal for keys and values according to Map.Entry contract
 			if ( this == o ) {
@@ -270,7 +291,7 @@ public class MapEntryNode extends AbstractMapComponentNode implements Aggregated
 			if ( o == null || getClass() != o.getClass() ) {
 				return false;
 			}
-			EntryAdapter that = ( EntryAdapter ) o;
+			EntryAdapter that = (EntryAdapter) o;
 
 			// make sure we have the same types...
 			return ( key == null ? that.key == null : key.equals( that.key ) )
@@ -278,6 +299,7 @@ public class MapEntryNode extends AbstractMapComponentNode implements Aggregated
 
 		}
 
+		@Override
 		public int hashCode() {
 			int keyHash = key == null ? 0 : key.hashCode();
 			int valueHash = value == null ? 0 : value.hashCode();

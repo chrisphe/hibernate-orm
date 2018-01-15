@@ -1,27 +1,11 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2010, Red Hat Inc. or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Inc.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.dialect;
+
 import java.sql.Types;
 
 import org.hibernate.LockMode;
@@ -36,20 +20,22 @@ import org.hibernate.dialect.lock.UpdateLockingStrategy;
 import org.hibernate.persister.entity.Lockable;
 
 /**
- * A <tt>Dialect</tt> for Pointbase.
+ * A Dialect for Pointbase.
+ *
  * @author  Ed Mackenzie
  */
 public class PointbaseDialect extends org.hibernate.dialect.Dialect {
-
 	/**
 	 * Creates new PointbaseDialect
 	 */
 	public PointbaseDialect() {
 		super();
-		registerColumnType( Types.BIT, "smallint" ); //no pointbase BIT
+		//no pointbase BIT
+		registerColumnType( Types.BIT, "smallint" );
 		registerColumnType( Types.BIGINT, "bigint" );
 		registerColumnType( Types.SMALLINT, "smallint" );
-		registerColumnType( Types.TINYINT, "smallint" ); //no pointbase TINYINT
+		//no pointbase TINYINT
+		registerColumnType( Types.TINYINT, "smallint" );
 		registerColumnType( Types.INTEGER, "integer" );
 		registerColumnType( Types.CHAR, "char(1)" );
 		registerColumnType( Types.VARCHAR, "varchar($l)" );
@@ -66,22 +52,27 @@ public class PointbaseDialect extends org.hibernate.dialect.Dialect {
 		registerColumnType( Types.NUMERIC, "numeric($p,$s)" );
 	}
 
+	@Override
 	public String getAddColumnString() {
 		return "add";
 	}
 
+	@Override
 	public boolean dropConstraints() {
 		return false;
 	}
 
+	@Override
 	public String getCascadeConstraintsString() {
 		return " cascade";
 	}
 
+	@Override
 	public String getForUpdateString() {
 		return "";
 	}
 
+	@Override
 	public LockingStrategy getLockingStrategy(Lockable lockable, LockMode lockMode) {
 		// Pointbase has no known variation of a "SELECT ... FOR UPDATE" syntax...
 		if ( lockMode==LockMode.PESSIMISTIC_FORCE_INCREMENT) {

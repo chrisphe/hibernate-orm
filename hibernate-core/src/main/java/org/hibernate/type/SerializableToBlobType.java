@@ -1,157 +1,56 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2010, Red Hat Inc. or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Inc.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.type;
 
-import java.io.ByteArrayInputStream;
 import java.io.Serializable;
-import java.sql.Blob;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.sql.SQLException;
-import java.sql.Types;
-import java.util.Map;
 import java.util.Properties;
 
-import org.dom4j.Node;
-
-import org.hibernate.Hibernate;
-import org.hibernate.HibernateException;
 import org.hibernate.MappingException;
-import org.hibernate.engine.spi.Mapping;
-import org.hibernate.engine.spi.SessionFactoryImplementor;
-import org.hibernate.engine.spi.SessionImplementor;
 import org.hibernate.internal.util.ReflectHelper;
-import org.hibernate.internal.util.SerializationHelper;
-import org.hibernate.usertype.ParameterizedType;
+import org.hibernate.type.descriptor.java.SerializableTypeDescriptor;
+import org.hibernate.type.descriptor.sql.BlobTypeDescriptor;
+import org.hibernate.usertype.DynamicParameterizedType;
 
 /**
- * @author Emmanuel Bernard
+ * @author Brett Meyer
  */
-public class SerializableToBlobType extends AbstractLobType implements ParameterizedType {
-	/**
-	 * class name of the serialisable class
-	 */
+public class SerializableToBlobType<T extends Serializable> extends AbstractSingleColumnStandardBasicType<T> implements DynamicParameterizedType {
+	
 	public static final String CLASS_NAME = "classname";
-	private Class serializableClass;
-	private SerializableType type;
+	
+	private static final long serialVersionUID = 1L;
 
-	public int[] sqlTypes(Mapping mapping) throws MappingException {
-		return new int[]{Types.BLOB};
-	}
-
-	public Class getReturnedClass() {
-		return serializableClass;
+	public SerializableToBlobType() {
+		super( BlobTypeDescriptor.DEFAULT, new SerializableTypeDescriptor( Serializable.class ) );
 	}
 
 	@Override
-	public boolean isEqual(Object x, Object y, SessionFactoryImplementor factory) {
-		return type.isEqual( x, y );
+	public String getName() {
+		return getClass().getName();
 	}
-
 
 	@Override
-	public int getHashCode(Object x, SessionFactoryImplementor session) {
-		return type.getHashCode( x );
-	}
-
-	public Object get(ResultSet rs, String name) throws SQLException {
-		Blob blob = rs.getBlob( name );
-		if ( rs.wasNull() ) return null;
-		int length = (int) blob.length();
-		byte[] primaryResult = blob.getBytes( 1, length );
-		return fromBytes( primaryResult );
-	}
-
-	private static byte[] toBytes(Object object) throws SerializationException {
-		return SerializationHelper.serialize( (Serializable) object );
-	}
-
-	private Object fromBytes(byte[] bytes) throws SerializationException {
-		return SerializationHelper.deserialize( bytes, getReturnedClass().getClassLoader() );
-	}
-
-	public void set(PreparedStatement st, Object value, int index, SessionImplementor session) throws SQLException {
-		if ( value != null ) {
-			byte[] toSet;
-			toSet = toBytes( value );
-			if ( session.getFactory().getDialect().useInputStreamToInsertBlob() ) {
-				st.setBinaryStream( index, new ByteArrayInputStream( toSet ), toSet.length );
-			}
-			else {
-				st.setBlob( index, Hibernate.getLobCreator( session ).createBlob( toSet ) );
-			}
+	@SuppressWarnings("unchecked")
+	public void setParameterValues(Properties parameters) {
+		ParameterType reader = (ParameterType) parameters.get( PARAMETER_TYPE );
+		if ( reader != null ) {
+			setJavaTypeDescriptor( new SerializableTypeDescriptor<T>( reader.getReturnedClass() ) );
 		}
 		else {
-			st.setNull( index, sqlTypes( null )[0] );
-		}
-	}
-
-	public void setToXMLNode(Node node, Object value, SessionFactoryImplementor factory) throws HibernateException {
-		type.setToXMLNode( node, value, factory );
-	}
-
-	public String toLoggableString(Object value, SessionFactoryImplementor factory) throws HibernateException {
-		return type.toLoggableString( value, factory );
-	}
-
-	public Object fromXMLNode(Node xml, Mapping factory) throws HibernateException {
-		return type.fromXMLNode( xml, factory );
-	}
-
-	public Object deepCopy(Object value, SessionFactoryImplementor factory)
-			throws HibernateException {
-		return type.deepCopy( value, null );
-	}
-
-	public boolean isMutable() {
-		return type.isMutable();
-	}
-
-	public Object replace(Object original, Object target, SessionImplementor session, Object owner, Map copyCache)
-			throws HibernateException {
-		return type.replace( original, target, session, owner, copyCache );
-	}
-
-	public boolean[] toColumnNullness(Object value, Mapping mapping) {
-		return type.toColumnNullness( value, mapping );
-	}
-
-	public void setParameterValues(Properties parameters) {
-		if ( parameters != null ) {
 			String className = parameters.getProperty( CLASS_NAME );
 			if ( className == null ) {
-				throw new MappingException(
-						"No class name defined for type: " + SerializableToBlobType.class.getName()
-				);
+				throw new MappingException( "No class name defined for type: " + SerializableToBlobType.class.getName() );
 			}
 			try {
-				serializableClass = ReflectHelper.classForName( className );
+				setJavaTypeDescriptor( new SerializableTypeDescriptor<T>( ReflectHelper.classForName( className ) ) );
 			}
-			catch (ClassNotFoundException e) {
+			catch ( ClassNotFoundException e ) {
 				throw new MappingException( "Unable to load class from " + CLASS_NAME + " parameter", e );
 			}
 		}
-		type = new SerializableType( serializableClass );
 	}
 }

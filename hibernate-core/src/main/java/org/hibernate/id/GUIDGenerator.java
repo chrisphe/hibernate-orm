@@ -1,36 +1,19 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2010, Red Hat Inc. or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Inc.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.id;
+
 import java.io.Serializable;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 
-import org.jboss.logging.Logger;
-
 import org.hibernate.HibernateException;
-import org.hibernate.engine.spi.SessionImplementor;
+import org.hibernate.engine.spi.SharedSessionContractImplementor;
+import org.hibernate.internal.CoreLogging;
 import org.hibernate.internal.CoreMessageLogger;
 
 /**
@@ -39,46 +22,47 @@ import org.hibernate.internal.CoreMessageLogger;
  * @author Joseph Fifield
  */
 public class GUIDGenerator implements IdentifierGenerator {
+	private static final CoreMessageLogger LOG = CoreLogging.messageLogger( GUIDGenerator.class );
 
-    private static final CoreMessageLogger LOG = Logger.getMessageLogger(CoreMessageLogger.class, GUIDGenerator.class.getName());
-	private static boolean warned = false;
+	private static boolean WARNED;
 
 	public GUIDGenerator() {
-		if ( ! warned ) {
-			warned = true;
-            LOG.deprecatedUuidGenerator(UUIDGenerator.class.getName(), UUIDGenerationStrategy.class.getName());
+		if ( !WARNED ) {
+			WARNED = true;
+			LOG.deprecatedUuidGenerator( UUIDGenerator.class.getName(), UUIDGenerationStrategy.class.getName() );
 		}
 	}
 
-	public Serializable generate(SessionImplementor session, Object obj)
-	throws HibernateException {
-
-		final String sql = session.getFactory().getDialect().getSelectGUIDString();
+	public Serializable generate(SharedSessionContractImplementor session, Object obj) throws HibernateException {
+		final String sql = session.getJdbcServices().getJdbcEnvironment().getDialect().getSelectGUIDString();
 		try {
-			PreparedStatement st = session.getTransactionCoordinator().getJdbcCoordinator().getStatementPreparer().prepareStatement( sql );
+			PreparedStatement st = session.getJdbcCoordinator().getStatementPreparer().prepareStatement( sql );
 			try {
-				ResultSet rs = st.executeQuery();
+				ResultSet rs = session.getJdbcCoordinator().getResultSetReturn().extract( st );
 				final String result;
 				try {
-					rs.next();
-					result = rs.getString(1);
+					if ( !rs.next() ) {
+						throw new HibernateException( "The database returned no GUID identity value" );
+					}
+					result = rs.getString( 1 );
 				}
 				finally {
-					rs.close();
+					session.getJdbcCoordinator().getLogicalConnection().getResourceRegistry().release( rs, st );
 				}
-                LOG.guidGenerated(result);
+				LOG.guidGenerated( result );
 				return result;
 			}
 			finally {
-				st.close();
+				session.getJdbcCoordinator().getLogicalConnection().getResourceRegistry().release( st );
+				session.getJdbcCoordinator().afterStatementExecution();
 			}
 		}
 		catch (SQLException sqle) {
-			throw session.getFactory().getSQLExceptionHelper().convert(
+			throw session.getJdbcServices().getSqlExceptionHelper().convert(
 					sqle,
 					"could not retrieve GUID",
 					sql
-				);
+			);
 		}
 	}
 }

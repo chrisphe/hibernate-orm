@@ -1,29 +1,13 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2010, Red Hat Inc. or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Inc.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.engine.jdbc;
 import java.sql.Blob;
 import java.sql.Clob;
+import java.sql.NClob;
 
 /**
  * Convenient base class for proxy-based LobCreator for handling wrapping.
@@ -31,22 +15,23 @@ import java.sql.Clob;
  * @author Steve Ebersole
  */
 public abstract class AbstractLobCreator implements LobCreator {
-	/**
-	 * {@inheritDoc}
-	 */
+	@Override
 	public Blob wrap(Blob blob) {
 		return SerializableBlobProxy.generateProxy( blob );
 	}
 
-	/**
-	 * {@inheritDoc}
-	 */
+	@Override
 	public Clob wrap(Clob clob) {
-		if ( SerializableNClobProxy.isNClob( clob ) ) {
-			return SerializableNClobProxy.generateProxy( clob );
+		if ( NClob.class.isInstance( clob ) ) {
+			return wrap( (NClob) clob );
 		}
 		else {
 			return SerializableClobProxy.generateProxy( clob );
 		}
+	}
+
+	@Override
+	public NClob wrap(NClob nclob) {
+		return SerializableNClobProxy.generateProxy( nclob );
 	}
 }

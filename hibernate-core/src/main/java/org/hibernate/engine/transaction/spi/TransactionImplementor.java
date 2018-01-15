@@ -1,72 +1,43 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2011, Red Hat Inc. or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Inc.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.engine.transaction.spi;
 
+import org.hibernate.HibernateException;
 import org.hibernate.Transaction;
+import org.hibernate.resource.transaction.spi.TransactionStatus;
 
 /**
- * Additional contract for implementors of the Hibernate {@link Transaction} API.
- * 
  * @author Steve Ebersole
  */
 public interface TransactionImplementor extends Transaction {
 	/**
-	 * Retrieve an isolation delegate appropriate for this transaction strategy.
+	 * Invalidates a transaction handle.   This might happen, e.g., when:<ul>
+	 *     <li>The transaction is committed</li>
+	 *     <li>The transaction is rolled-back</li>
+	 *     <li>The session that owns the transaction is closed</li>
+	 * </ul>
 	 *
-	 * @return An isolation delegate.
+	 * @deprecated (since 5.2) as part of effort to consolidate support for JPA and Hibernate SessionFactory, Session, etc
+	 * natively, support for local Transaction delegates to remain "valid" after they are committed or rolled-back (and to a
+	 * degree after the owning Session is closed) to more closely comply with the JPA spec natively in terms
+	 * of allowing that extended access after Session is closed.  Hibernate impls have all been changed to no-op here.
 	 */
-	public IsolationDelegate createIsolationDelegate();
+	@Deprecated
+	default void invalidate() {
+		// no-op : see @deprecated note
+	}
 
 	/**
-	 * Get the current state of this transaction's join status.
+	 * Indicate whether a resource transaction is in progress.
 	 *
-	 * @return The current join status
+	 * @param isMarkedRollbackConsideredActive whether to consider {@link TransactionStatus#MARKED_ROLLBACK} as active.
+	 *
+	 * @return boolean indicating whether transaction is in progress
+	 * @throws HibernateException if an unexpected error condition is encountered.
 	 */
-	public JoinStatus getJoinStatus();
-
-	/**
-	 * Mark a transaction as joinable
-	 */
-	public void markForJoin();
-
-	/**
-	 * Perform a join to the underlying transaction
-	 */
-	public void join();
-
-	/**
-	 * Reset this transaction's join status.
-	 */
-	public void resetJoinStatus();
-
-	/**
-	 * Make a best effort to mark the underlying transaction for rollback only.
-	 */
-	public void markRollbackOnly();
-
-	/**
-	 * Called after completion of the underlying transaction to signify the facade is no longer valid.
-	 */
-	public void invalidate();
+	boolean isActive(boolean isMarkedRollbackConsideredActive);
 }

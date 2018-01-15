@@ -1,25 +1,8 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2010, Red Hat Inc. or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Inc.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.type;
 
@@ -42,9 +25,11 @@ import org.hibernate.type.descriptor.sql.SqlTypeDescriptor;
  * @author Steve Ebersole
  */
 @SuppressWarnings( {"UnusedDeclaration"})
-public class StandardBasicTypes {
+public final class StandardBasicTypes {
+	private StandardBasicTypes() {
+	}
 
-	private static final Set<SqlTypeDescriptor> sqlTypeDescriptors = new HashSet<SqlTypeDescriptor>();
+	private static final Set<SqlTypeDescriptor> SQL_TYPE_DESCRIPTORS = new HashSet<SqlTypeDescriptor>();
 
 	/**
 	 * The standard Hibernate type for mapping {@link Boolean} to JDBC {@link java.sql.Types#BIT BIT}.
@@ -141,6 +126,11 @@ public class StandardBasicTypes {
 	 * @see StringType
 	 */
 	public static final StringType STRING = StringType.INSTANCE;
+
+	/**
+	 * The standard Hibernate type for mapping {@link String} to JDBC {@link java.sql.Types#NVARCHAR NVARCHAR}
+	 */
+	public static final StringNVarcharType NSTRING = StringNVarcharType.INSTANCE;
 
 	/**
 	 * The standard Hibernate type for mapping {@link java.net.URL} to JDBC {@link java.sql.Types#VARCHAR VARCHAR}.
@@ -246,6 +236,14 @@ public class StandardBasicTypes {
 	public static final WrapperBinaryType WRAPPER_BINARY = WrapperBinaryType.INSTANCE;
 
 	/**
+	 * The standard Hibernate type for mapping {@code byte[]} to JDBC {@link java.sql.Types#VARBINARY VARBINARY},
+	 * specifically for entity versions/timestamps.
+	 *
+	 * @see RowVersionType
+	 */
+	public static final RowVersionType ROW_VERSION = RowVersionType.INSTANCE;
+
+	/**
 	 * The standard Hibernate type for mapping {@code byte[]} to JDBC {@link java.sql.Types#LONGVARBINARY LONGVARBINARY}.
 	 *
 	 * @see ImageType
@@ -295,12 +293,29 @@ public class StandardBasicTypes {
 	public static final TextType TEXT = TextType.INSTANCE;
 
 	/**
+	 * The standard Hibernate type for mapping {@link String} to JDBC {@link java.sql.Types#LONGNVARCHAR LONGNVARCHAR}.
+	 * <p/>
+	 * Similar to a {@link #MATERIALIZED_NCLOB}
+	 *
+	 * @see NTextType
+	 */
+	public static final NTextType NTEXT = NTextType.INSTANCE;
+
+	/**
 	 * The standard Hibernate type for mapping {@link java.sql.Clob} to JDBC {@link java.sql.Types#CLOB CLOB}.
 	 *
 	 * @see ClobType
 	 * @see #MATERIALIZED_CLOB
 	 */
 	public static final ClobType CLOB = ClobType.INSTANCE;
+
+	/**
+	 * The standard Hibernate type for mapping {@link java.sql.NClob} to JDBC {@link java.sql.Types#NCLOB NCLOB}.
+	 *
+	 * @see NClobType
+	 * @see #MATERIALIZED_NCLOB
+	 */
+	public static final NClobType NCLOB = NClobType.INSTANCE;
 
 	/**
 	 * The standard Hibernate type for mapping {@link String} to JDBC {@link java.sql.Types#CLOB CLOB}.
@@ -310,6 +325,15 @@ public class StandardBasicTypes {
 	 * @see #TEXT
 	 */
 	public static final MaterializedClobType MATERIALIZED_CLOB = MaterializedClobType.INSTANCE;
+
+	/**
+	 * The standard Hibernate type for mapping {@link String} to JDBC {@link java.sql.Types#NCLOB NCLOB}.
+	 *
+	 * @see MaterializedNClobType
+	 * @see #MATERIALIZED_CLOB
+	 * @see #NTEXT
+	 */
+	public static final MaterializedNClobType MATERIALIZED_NCLOB = MaterializedNClobType.INSTANCE;
 
 	/**
 	 * The standard Hibernate type for mapping {@link java.io.Serializable} to JDBC {@link java.sql.Types#VARBINARY VARBINARY}.

@@ -1,28 +1,11 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2008, Red Hat Middleware LLC or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Middleware LLC.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
- *
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.criterion;
+
 import org.hibernate.sql.JoinType;
 import org.hibernate.transform.AliasToEntityMapResultTransformer;
 import org.hibernate.transform.DistinctRootEntityResultTransformer;
@@ -31,6 +14,8 @@ import org.hibernate.transform.ResultTransformer;
 import org.hibernate.transform.RootEntityResultTransformer;
 
 /**
+ * Commonality between different types of Criteria.
+ *
  * @author Gavin King
  */
 public interface CriteriaSpecification {
@@ -62,24 +47,27 @@ public interface CriteriaSpecification {
 
 	/**
 	 * Specifies joining to an entity based on an inner join.
-	 * @deprecated use {@link JoinType#INNER_JOIN}
+	 *
+	 * @deprecated use {@link org.hibernate.sql.JoinType#INNER_JOIN}
 	 */
 	@Deprecated
-	public static final int INNER_JOIN = org.hibernate.sql.JoinFragment.INNER_JOIN;
+	public static final int INNER_JOIN = JoinType.INNER_JOIN.getJoinTypeValue();
 
 	/**
 	 * Specifies joining to an entity based on a full join.
-	 * @deprecated use {@link JoinType#FULL_JOIN}
+	 *
+	 * @deprecated use {@link org.hibernate.sql.JoinType#FULL_JOIN}
 	 */
 	@Deprecated
-	public static final int FULL_JOIN = org.hibernate.sql.JoinFragment.FULL_JOIN;
+	public static final int FULL_JOIN = JoinType.FULL_JOIN.getJoinTypeValue();
 
 	/**
 	 * Specifies joining to an entity based on a left outer join.
-	 * @deprecated use {@link JoinType#LEFT_OUTER_JOIN}
+	 *
+	 * @deprecated use {@link org.hibernate.sql.JoinType#LEFT_OUTER_JOIN}
 	 */
 	@Deprecated
-	public static final int LEFT_JOIN = org.hibernate.sql.JoinFragment.LEFT_OUTER_JOIN;
+	public static final int LEFT_JOIN = JoinType.LEFT_OUTER_JOIN.getJoinTypeValue();
 
 
 }

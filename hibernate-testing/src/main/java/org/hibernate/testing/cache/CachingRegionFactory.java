@@ -1,34 +1,18 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2010-2011, Red Hat Inc. or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Inc.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.testing.cache;
 
 import java.util.Properties;
 
-import org.jboss.logging.Logger;
-
+import org.hibernate.boot.spi.SessionFactoryOptions;
 import org.hibernate.cache.CacheException;
+import org.hibernate.cache.internal.DefaultCacheKeysFactory;
 import org.hibernate.cache.spi.CacheDataDescription;
+import org.hibernate.cache.spi.CacheKeysFactory;
 import org.hibernate.cache.spi.CollectionRegion;
 import org.hibernate.cache.spi.EntityRegion;
 import org.hibernate.cache.spi.NaturalIdRegion;
@@ -36,29 +20,48 @@ import org.hibernate.cache.spi.QueryResultsRegion;
 import org.hibernate.cache.spi.RegionFactory;
 import org.hibernate.cache.spi.TimestampsRegion;
 import org.hibernate.cache.spi.access.AccessType;
-import org.hibernate.cfg.Settings;
-import org.hibernate.internal.CoreMessageLogger;
+
+import org.jboss.logging.Logger;
 
 /**
  * @author Strong Liu
  */
 public class CachingRegionFactory implements RegionFactory {
-	private static final CoreMessageLogger LOG = Logger.getMessageLogger(
-			CoreMessageLogger.class, CachingRegionFactory.class.getName()
-	);
-	private Settings settings;
+	private static final Logger LOG = Logger.getLogger( CachingRegionFactory.class.getName() );
+
+	public static String DEFAULT_ACCESSTYPE = "DefaultAccessType";
+
+	private final CacheKeysFactory cacheKeysFactory;
+
+	private SessionFactoryOptions settings;
+	private Properties properties;
+
 	public CachingRegionFactory() {
-		LOG.warn( "CachingRegionFactory should be only used for testing." );
+		this( DefaultCacheKeysFactory.INSTANCE, null );
+	}
+
+	public CachingRegionFactory(CacheKeysFactory cacheKeysFactory) {
+		this( cacheKeysFactory, null );
 	}
 
 	public CachingRegionFactory(Properties properties) {
-		//add here to avoid run into catch
+		this( DefaultCacheKeysFactory.INSTANCE, properties );
+	}
+
+	public CachingRegionFactory(CacheKeysFactory cacheKeysFactory, Properties properties) {
 		LOG.warn( "CachingRegionFactory should be only used for testing." );
+		this.cacheKeysFactory = cacheKeysFactory;
+		this.properties = properties;
+	}
+
+	public CacheKeysFactory getCacheKeysFactory() {
+		return cacheKeysFactory;
 	}
 
 	@Override
-	public void start(Settings settings, Properties properties) throws CacheException {
-		this.settings=settings;
+	public void start(SessionFactoryOptions settings, Properties properties) throws CacheException {
+		this.settings = settings;
+		this.properties = properties;
 	}
 
 	@Override
@@ -72,7 +75,10 @@ public class CachingRegionFactory implements RegionFactory {
 
 	@Override
 	public AccessType getDefaultAccessType() {
-		return AccessType.NONSTRICT_READ_WRITE;
+		if ( properties != null && properties.get( DEFAULT_ACCESSTYPE ) != null ) {
+			return AccessType.fromExternalName( properties.getProperty( DEFAULT_ACCESSTYPE ) );
+		}
+		return AccessType.READ_WRITE;
 	}
 
 	@Override
@@ -83,40 +89,42 @@ public class CachingRegionFactory implements RegionFactory {
 	@Override
 	public EntityRegion buildEntityRegion(String regionName, Properties properties, CacheDataDescription metadata)
 			throws CacheException {
-		return new EntityRegionImpl( regionName, metadata, settings );
+		return new EntityRegionImpl( this, regionName, metadata, settings );
 	}
-	
-	@Override
-    public NaturalIdRegion buildNaturalIdRegion(String regionName, Properties properties, CacheDataDescription metadata)
-            throws CacheException {
-        return new NaturalIdRegionImpl( regionName, metadata, settings );
-    }
 
-    @Override
-	public CollectionRegion buildCollectionRegion(String regionName, Properties properties, CacheDataDescription metadata)
+	@Override
+	public NaturalIdRegion buildNaturalIdRegion(String regionName, Properties properties, CacheDataDescription metadata)
 			throws CacheException {
-		return new CollectionRegionImpl( regionName, metadata, settings );
+		return new NaturalIdRegionImpl( this, regionName, metadata, settings );
+	}
+
+	@Override
+	public CollectionRegion buildCollectionRegion(
+			String regionName,
+			Properties properties,
+			CacheDataDescription metadata) throws CacheException {
+		return new CollectionRegionImpl( this, regionName, metadata, settings );
 	}
 
 	@Override
 	public QueryResultsRegion buildQueryResultsRegion(String regionName, Properties properties) throws CacheException {
-		return new QueryResultsRegionImpl( regionName );
+		return new QueryResultsRegionImpl( this, regionName );
 	}
 
 	@Override
 	public TimestampsRegion buildTimestampsRegion(String regionName, Properties properties) throws CacheException {
-		return new TimestampsRegionImpl( regionName );
+		return new TimestampsRegionImpl( this, regionName );
 	}
 
 	private static class QueryResultsRegionImpl extends BaseGeneralDataRegion implements QueryResultsRegion {
-		QueryResultsRegionImpl(String name) {
-			super( name );
+		QueryResultsRegionImpl(CachingRegionFactory cachingRegionFactory, String name) {
+			super( cachingRegionFactory, name );
 		}
 	}
 
 	private static class TimestampsRegionImpl extends BaseGeneralDataRegion implements TimestampsRegion {
-		TimestampsRegionImpl(String name) {
-			super( name );
+		TimestampsRegionImpl(CachingRegionFactory cachingRegionFactory, String name) {
+			super( cachingRegionFactory, name );
 		}
 	}
 }

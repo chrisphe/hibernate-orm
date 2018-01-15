@@ -1,3 +1,10 @@
+/*
+ * Hibernate, Relational Persistence for Idiomatic Java
+ *
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
+ */
+
 // $Id: AggressiveReleaseTest.java 10977 2006-12-12 23:28:04Z steve.ebersole@jboss.com $
 package org.hibernate.test.connections;
 
@@ -5,20 +12,24 @@ import java.sql.Connection;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
-
-import org.junit.Test;
+import java.util.Map;
 
 import org.hibernate.ConnectionReleaseMode;
 import org.hibernate.Hibernate;
 import org.hibernate.ScrollableResults;
 import org.hibernate.Session;
-import org.hibernate.cfg.Configuration;
+import org.hibernate.cfg.AvailableSettings;
 import org.hibernate.cfg.Environment;
-import org.hibernate.engine.transaction.internal.jta.CMTTransactionFactory;
+import org.hibernate.dialect.H2Dialect;
+import org.hibernate.engine.jdbc.connections.spi.ConnectionProvider;
 import org.hibernate.internal.util.SerializationHelper;
-import org.hibernate.service.jdbc.connections.spi.ConnectionProvider;
+import org.hibernate.resource.transaction.backend.jta.internal.JtaTransactionCoordinatorBuilderImpl;
+import org.hibernate.stat.Statistics;
+
+import org.hibernate.testing.RequiresDialect;
 import org.hibernate.testing.jta.TestingJtaBootstrap;
 import org.hibernate.testing.jta.TestingJtaPlatformImpl;
+import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
@@ -29,15 +40,19 @@ import static org.junit.Assert.fail;
  *
  * @author Steve Ebersole
  */
+@RequiresDialect(H2Dialect.class)
 public class AggressiveReleaseTest extends ConnectionManagementTestCase {
 	@Override
-	public void configure(Configuration cfg) {
-		super.configure( cfg );
-		TestingJtaBootstrap.prepare( cfg.getProperties() );
-		cfg.setProperty( Environment.TRANSACTION_STRATEGY, CMTTransactionFactory.class.getName() );
-		cfg.setProperty( Environment.RELEASE_CONNECTIONS, ConnectionReleaseMode.AFTER_STATEMENT.toString() );
-		cfg.setProperty( Environment.GENERATE_STATISTICS, "true" );
-		cfg.setProperty( Environment.STATEMENT_BATCH_SIZE, "0" );
+	@SuppressWarnings("unchecked")
+	protected void addSettings(Map settings) {
+		super.addSettings( settings );
+
+		TestingJtaBootstrap.prepare( settings );
+//		settings.put( Environment.TRANSACTION_STRATEGY, CMTTransactionFactory.class.getName() );
+		settings.put( AvailableSettings.TRANSACTION_COORDINATOR_STRATEGY, JtaTransactionCoordinatorBuilderImpl.class.getName() );
+		settings.put( Environment.RELEASE_CONNECTIONS, ConnectionReleaseMode.AFTER_STATEMENT.toString() );
+		settings.put( Environment.GENERATE_STATISTICS, "true" );
+		settings.put( Environment.STATEMENT_BATCH_SIZE, "0" );
 	}
 
 	@Override
@@ -215,9 +230,9 @@ public class AggressiveReleaseTest extends ConnectionManagementTestCase {
 
 	@Test
 	public void testConnectionMaintanenceDuringFlush() throws Throwable {
+		final Statistics statistics = sessionFactory().getStatistics();
 		prepare();
 		Session s = getSessionUnderTest();
-		s.beginTransaction();
 
 		List<Silly> entities = new ArrayList<Silly>();
 		for ( int i = 0; i < 10; i++ ) {
@@ -232,9 +247,9 @@ public class AggressiveReleaseTest extends ConnectionManagementTestCase {
 			silly.setName( "new-" + silly.getName() );
 			silly.getOther().setName( "new-" + silly.getOther().getName() );
 		}
-		long initialCount = sessionFactory().getStatistics().getConnectCount();
+		long initialCount = statistics.getConnectCount();
 		s.flush();
-		assertEquals( "connection not maintained through flush", initialCount + 1, sessionFactory().getStatistics().getConnectCount() );
+		assertEquals( "connection not maintained through flush", initialCount + 1, statistics.getConnectCount() );
 
 		s.createQuery( "delete from Silly" ).executeUpdate();
 		s.createQuery( "delete from Other" ).executeUpdate();

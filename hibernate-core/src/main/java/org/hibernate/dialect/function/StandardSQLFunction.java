@@ -1,27 +1,11 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2010, Red Hat Inc. or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Inc.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.dialect.function;
+
 import java.util.List;
 
 import org.hibernate.engine.spi.Mapping;
@@ -84,33 +68,25 @@ public class StandardSQLFunction implements SQLFunction {
 		return registeredType;
 	}
 
-	/**
-	 * {@inheritDoc}
-	 */
+	@Override
 	public boolean hasArguments() {
 		return true;
 	}
 
-	/**
-	 * {@inheritDoc}
-	 */
+	@Override
 	public boolean hasParenthesesIfNoArguments() {
 		return true;
 	}
 
-	/**
-	 * {@inheritDoc}
-	 */
+	@Override
 	public Type getReturnType(Type firstArgumentType, Mapping mapping) {
 		return registeredType == null ? firstArgumentType : registeredType;
 	}
 
-	/**
-	 * {@inheritDoc}
-	 */
+	@Override
 	public String render(Type firstArgumentType, List arguments, SessionFactoryImplementor sessionFactory) {
-		StringBuilder buf = new StringBuilder();
-		buf.append( name ).append( '(' );
+		final StringBuilder buf = new StringBuilder();
+		buf.append( getRenderedName( arguments) ).append( '(' );
 		for ( int i = 0; i < arguments.size(); i++ ) {
 			buf.append( arguments.get( i ) );
 			if ( i < arguments.size() - 1 ) {
@@ -120,6 +96,11 @@ public class StandardSQLFunction implements SQLFunction {
 		return buf.append( ')' ).toString();
 	}
 
+	protected String getRenderedName(List arguments) {
+		return getName();
+	}
+
+	@Override
 	public String toString() {
 		return name;
 	}

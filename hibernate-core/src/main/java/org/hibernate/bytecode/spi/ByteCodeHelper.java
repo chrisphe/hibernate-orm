@@ -1,25 +1,8 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2010, Red Hat Inc. or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Inc.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.bytecode.spi;
 
@@ -37,12 +20,15 @@ import java.util.zip.ZipInputStream;
  * @author Steve Ebersole
  */
 public class ByteCodeHelper {
+	/**
+	 * Disallow instantiation (its a helper)
+	 */
 	private ByteCodeHelper() {
 	}
 
 	/**
 	 * Reads class byte array info from the given input stream.
-	 * <p/>
+	 *
 	 * The stream is closed within this method!
 	 *
 	 * @param inputStream The stream containing the class binary; null will lead to an {@link IOException}
@@ -56,13 +42,13 @@ public class ByteCodeHelper {
 			throw new IOException( "null input stream" );
 		}
 
-		byte[] buffer = new byte[409600];
+		final byte[] buffer = new byte[409600];
 		byte[] classBytes = new byte[0];
 
 		try {
 			int r = inputStream.read( buffer );
 			while ( r >= buffer.length ) {
-				byte[] temp = new byte[ classBytes.length + buffer.length ];
+				final byte[] temp = new byte[ classBytes.length + buffer.length ];
 				// copy any previously read bytes into the temp array
 				System.arraycopy( classBytes, 0, temp, 0, classBytes.length );
 				// copy the just read bytes into the temp array (after the previously read)
@@ -72,7 +58,7 @@ public class ByteCodeHelper {
 				r = inputStream.read( buffer );
 			}
 			if ( r != -1 ) {
-				byte[] temp = new byte[ classBytes.length + r ];
+				final byte[] temp = new byte[ classBytes.length + r ];
 				// copy any previously read bytes into the temp array
 				System.arraycopy( classBytes, 0, temp, 0, classBytes.length );
 				// copy the just read bytes into the temp array (after the previously read)
@@ -109,18 +95,18 @@ public class ByteCodeHelper {
 	 * Read class definition a zip (jar) file entry.
 	 *
 	 * @param zip The zip entry stream.
-	 * 
+	 *
 	 * @return The class bytes
 	 *
 	 * @throws IOException Indicates a problem accessing the given stream.
 	 */
 	public static byte[] readByteCode(ZipInputStream zip) throws IOException {
-        ByteArrayOutputStream bout = new ByteArrayOutputStream();
-        InputStream in = new BufferedInputStream( zip );
-        int b;
-        while ( ( b = in.read() ) != -1 ) {
-            bout.write( b );
-        }
-        return bout.toByteArray();
-    }
+		final ByteArrayOutputStream bout = new ByteArrayOutputStream();
+		final InputStream in = new BufferedInputStream( zip );
+		int b;
+		while ( ( b = in.read() ) != -1 ) {
+			bout.write( b );
+		}
+		return bout.toByteArray();
+	}
 }

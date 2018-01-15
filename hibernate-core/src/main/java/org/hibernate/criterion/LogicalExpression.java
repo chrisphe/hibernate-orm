@@ -1,38 +1,20 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2008, Red Hat Middleware LLC or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Middleware LLC.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
- *
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.criterion;
+
 import org.hibernate.Criteria;
-import org.hibernate.HibernateException;
 import org.hibernate.engine.spi.TypedValue;
 
 /**
  * Superclass of binary logical expressions
+ *
  * @author Gavin King
  */
 public class LogicalExpression implements Criterion {
-
 	private final Criterion lhs;
 	private final Criterion rhs;
 	private final String op;
@@ -43,33 +25,33 @@ public class LogicalExpression implements Criterion {
 		this.op = op;
 	}
 
-	public TypedValue[] getTypedValues(Criteria criteria, CriteriaQuery criteriaQuery)
-	throws HibernateException {
+	@Override
+	public TypedValue[] getTypedValues(Criteria criteria, CriteriaQuery criteriaQuery) {
+		final TypedValue[] lhsTypedValues = lhs.getTypedValues( criteria, criteriaQuery );
+		final TypedValue[] rhsTypedValues = rhs.getTypedValues( criteria, criteriaQuery );
 
-		TypedValue[] lhstv = lhs.getTypedValues(criteria, criteriaQuery);
-		TypedValue[] rhstv = rhs.getTypedValues(criteria, criteriaQuery);
-		TypedValue[] result = new TypedValue[ lhstv.length + rhstv.length ];
-		System.arraycopy(lhstv, 0, result, 0, lhstv.length);
-		System.arraycopy(rhstv, 0, result, lhstv.length, rhstv.length);
+		final TypedValue[] result = new TypedValue[ lhsTypedValues.length + rhsTypedValues.length ];
+		System.arraycopy( lhsTypedValues, 0, result, 0, lhsTypedValues.length );
+		System.arraycopy( rhsTypedValues, 0, result, lhsTypedValues.length, rhsTypedValues.length );
 		return result;
 	}
 
-	public String toSqlString(Criteria criteria, CriteriaQuery criteriaQuery)
-	throws HibernateException {
-
-		return '(' +
-			lhs.toSqlString(criteria, criteriaQuery) +
-			' ' +
-			getOp() +
-			' ' +
-			rhs.toSqlString(criteria, criteriaQuery) +
-			')';
+	@Override
+	public String toSqlString(Criteria criteria, CriteriaQuery criteriaQuery) {
+		return '('
+				+ lhs.toSqlString( criteria, criteriaQuery )
+				+ ' '
+				+ getOp()
+				+ ' '
+				+ rhs.toSqlString( criteria, criteriaQuery )
+				+ ')';
 	}
 
 	public String getOp() {
 		return op;
 	}
 
+	@Override
 	public String toString() {
 		return lhs.toString() + ' ' + getOp() + ' ' + rhs.toString();
 	}

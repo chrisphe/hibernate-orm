@@ -1,34 +1,19 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2008, Red Hat Middleware LLC or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Middleware LLC.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
- *
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.engine.query.spi;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import org.hibernate.engine.query.ParameterRecognitionException;
+import org.hibernate.engine.spi.SessionFactoryImplementor;
 import org.hibernate.internal.util.collections.ArrayHelper;
 
 /**
@@ -39,94 +24,233 @@ import org.hibernate.internal.util.collections.ArrayHelper;
  */
 public class ParamLocationRecognizer implements ParameterParser.Recognizer {
 
-	public static class NamedParameterDescription {
-		private final boolean jpaStyle;
-		private final List positions = new ArrayList();
+	private Map<String, NamedParameterDescriptor> namedParameterDescriptors;
+	private Map<Integer, OrdinalParameterDescriptor> ordinalParameterDescriptors;
 
-		public NamedParameterDescription(boolean jpaStyle) {
-			this.jpaStyle = jpaStyle;
-		}
+	private Map<String, InFlightNamedParameterState> inFlightNamedStateMap;
+	private Map<Integer, InFlightOrdinalParameterState> inFlightOrdinalStateMap;
+	private Map<Integer, InFlightJpaOrdinalParameterState> inFlightJpaOrdinalStateMap;
 
-		public boolean isJpaStyle() {
-			return jpaStyle;
-		}
+	private final int jdbcStyleOrdinalCountBase;
+	private int jdbcStyleOrdinalCount;
 
-		private void add(int position) {
-			positions.add( position );
-		}
-
-		public int[] buildPositionsArray() {
-			return ArrayHelper.toIntArray( positions );
-		}
+	public ParamLocationRecognizer(int jdbcStyleOrdinalCountBase) {
+		this.jdbcStyleOrdinalCountBase = jdbcStyleOrdinalCountBase;
+		this.jdbcStyleOrdinalCount = jdbcStyleOrdinalCountBase;
 	}
-
-	private Map namedParameterDescriptions = new HashMap();
-	private List ordinalParameterLocationList = new ArrayList();
 
 	/**
 	 * Convenience method for creating a param location recognizer and
 	 * initiating the parse.
 	 *
 	 * @param query The query to be parsed for parameter locations.
+	 * @param sessionFactory
 	 * @return The generated recognizer, with journaled location info.
 	 */
-	public static ParamLocationRecognizer parseLocations(String query) {
-		ParamLocationRecognizer recognizer = new ParamLocationRecognizer();
+	public static ParamLocationRecognizer parseLocations(
+			String query,
+			SessionFactoryImplementor sessionFactory) {
+		final ParamLocationRecognizer recognizer = new ParamLocationRecognizer(
+				sessionFactory.getSessionFactoryOptions().jdbcStyleParamsZeroBased() ? 0 : 1
+		);
 		ParameterParser.parse( query, recognizer );
 		return recognizer;
 	}
 
-	/**
-	 * Returns the map of named parameter locations.  The map is keyed by
-	 * parameter name; the corresponding value is a (@link NamedParameterDescription}.
-	 *
-	 * @return The map of named parameter locations.
-	 */
-	public Map getNamedParameterDescriptionMap() {
-		return namedParameterDescriptions;
+	@Override
+	public void complete() {
+		if ( inFlightNamedStateMap != null && ( inFlightOrdinalStateMap != null || inFlightJpaOrdinalStateMap != null ) ) {
+			throw mixedParamStrategy();
+		}
+
+		// we know `inFlightNamedStateMap` is null, so no need to check it again
+
+		if ( inFlightOrdinalStateMap != null && inFlightJpaOrdinalStateMap != null ) {
+			throw mixedParamStrategy();
+		}
+
+		if ( inFlightNamedStateMap != null ) {
+			final Map<String, NamedParameterDescriptor> tmp = new HashMap<>();
+			for ( InFlightNamedParameterState inFlightState : inFlightNamedStateMap.values() ) {
+				tmp.put( inFlightState.name, inFlightState.complete() );
+			}
+			namedParameterDescriptors = Collections.unmodifiableMap( tmp );
+		}
+		else {
+			namedParameterDescriptors = Collections.emptyMap();
+		}
+
+		if ( inFlightOrdinalStateMap == null && inFlightJpaOrdinalStateMap == null ) {
+			ordinalParameterDescriptors = Collections.emptyMap();
+		}
+		else {
+			final Map<Integer, OrdinalParameterDescriptor> tmp = new HashMap<>();
+			if ( inFlightOrdinalStateMap != null ) {
+				for ( InFlightOrdinalParameterState state : inFlightOrdinalStateMap.values() ) {
+					tmp.put( state.identifier, state.complete() );
+				}
+			}
+			else {
+				for ( InFlightJpaOrdinalParameterState state : inFlightJpaOrdinalStateMap.values() ) {
+					tmp.put( state.identifier, state.complete() );
+				}
+			}
+			ordinalParameterDescriptors = Collections.unmodifiableMap( tmp );
+		}
 	}
 
-	/**
-	 * Returns the list of ordinal parameter locations.  The list elements
-	 * are Integers, representing the location for that given ordinal.  Thus
-	 * {@link #getOrdinalParameterLocationList()}.elementAt(n) represents the
-	 * location for the nth parameter.
-	 *
-	 * @return The list of ordinal parameter locations.
-	 */
-	public List getOrdinalParameterLocationList() {
-		return ordinalParameterLocationList;
+	private ParameterRecognitionException mixedParamStrategy() {
+		throw new ParameterRecognitionException( "Mixed parameter strategies - use just one of named, positional or JPA-ordinal strategy" );
+	}
+
+	public Map<String, NamedParameterDescriptor> getNamedParameterDescriptionMap() {
+		return namedParameterDescriptors;
+	}
+
+	public Map<Integer, OrdinalParameterDescriptor> getOrdinalParameterDescriptionMap() {
+		return ordinalParameterDescriptors;
 	}
 
 
+	// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 	// Recognition code ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+
+	// NOTE : we keep track of `inFlightOrdinalStateMap` versus `inFlightJpaOrdinalStateMap`
+	//		in order to perform better validations of mixed parameter strategies
+
+	@Override
 	public void ordinalParameter(int position) {
-		ordinalParameterLocationList.add( position );
-	}
-
-	public void namedParameter(String name, int position) {
-		getOrBuildNamedParameterDescription( name, false ).add( position );
-	}
-
-	public void jpaPositionalParameter(String name, int position) {
-		getOrBuildNamedParameterDescription( name, true ).add( position );
-	}
-
-	private NamedParameterDescription getOrBuildNamedParameterDescription(String name, boolean jpa) {
-		NamedParameterDescription desc = ( NamedParameterDescription ) namedParameterDescriptions.get( name );
-		if ( desc == null ) {
-			desc = new NamedParameterDescription( jpa );
-			namedParameterDescriptions.put( name, desc );
+		if ( inFlightOrdinalStateMap == null ) {
+			inFlightOrdinalStateMap = new HashMap<>();
 		}
-		return desc;
+
+		final int label = jdbcStyleOrdinalCount++;
+		inFlightOrdinalStateMap.put(
+				label,
+				new InFlightOrdinalParameterState( label, label - jdbcStyleOrdinalCountBase, position )
+		);
 	}
 
+	@Override
+	public void namedParameter(String name, int position) {
+		getOrBuildNamedParameterDescription( name ).add( position );
+	}
+
+	private InFlightNamedParameterState getOrBuildNamedParameterDescription(String name) {
+		if ( inFlightNamedStateMap == null ) {
+			inFlightNamedStateMap = new HashMap<>();
+		}
+
+		InFlightNamedParameterState descriptor = inFlightNamedStateMap.get( name );
+		if ( descriptor == null ) {
+			descriptor = new InFlightNamedParameterState( name );
+			inFlightNamedStateMap.put( name, descriptor );
+		}
+		return descriptor;
+	}
+
+	@Override
+	public void jpaPositionalParameter(int name, int position) {
+		getOrBuildJpaOrdinalParameterDescription( name ).add( position );
+	}
+
+	private InFlightJpaOrdinalParameterState getOrBuildJpaOrdinalParameterDescription(int name) {
+		if ( inFlightJpaOrdinalStateMap == null ) {
+			inFlightJpaOrdinalStateMap = new HashMap<>();
+		}
+
+		InFlightJpaOrdinalParameterState descriptor = inFlightJpaOrdinalStateMap.get( name );
+		if ( descriptor == null ) {
+			descriptor = new InFlightJpaOrdinalParameterState( name );
+			inFlightJpaOrdinalStateMap.put( name, descriptor );
+		}
+		return descriptor;
+	}
+
+	@Override
 	public void other(char character) {
 		// don't care...
 	}
 
+	@Override
 	public void outParameter(int position) {
 		// don't care...
+	}
+
+
+	/**
+	 * Internal in-flight representation of a recognized named parameter
+	 */
+	public static class InFlightNamedParameterState {
+		private final String name;
+		private final List<Integer> sourcePositions = new ArrayList<>();
+
+		InFlightNamedParameterState(String name) {
+			this.name = name;
+		}
+
+		private void add(int position) {
+			sourcePositions.add( position );
+		}
+
+		private NamedParameterDescriptor complete() {
+			return new NamedParameterDescriptor(
+					name,
+					null,
+					ArrayHelper.toIntArray( sourcePositions )
+			);
+		}
+	}
+
+
+	/**
+	 * Internal in-flight representation of a recognized named parameter
+	 */
+	public static class InFlightOrdinalParameterState {
+		private final int identifier;
+		private final int valuePosition;
+		private final int sourcePosition;
+
+		InFlightOrdinalParameterState(int label, int valuePosition, int sourcePosition) {
+			this.identifier = label;
+			this.valuePosition = valuePosition;
+			this.sourcePosition = sourcePosition;
+		}
+
+		private OrdinalParameterDescriptor complete() {
+			return new OrdinalParameterDescriptor(
+					identifier,
+					valuePosition,
+					null,
+					new int[] { sourcePosition }
+			);
+		}
+	}
+
+
+	/**
+	 * Internal in-flight representation of a recognized named parameter
+	 */
+	public static class InFlightJpaOrdinalParameterState {
+		private final int identifier;
+		private final List<Integer> sourcePositions = new ArrayList<>();
+
+		InFlightJpaOrdinalParameterState(int identifier) {
+			this.identifier = identifier;
+		}
+
+		private void add(int position) {
+			sourcePositions.add( position );
+		}
+
+		private OrdinalParameterDescriptor complete() {
+			return new OrdinalParameterDescriptor(
+					identifier,
+					identifier - 1,
+					null,
+					ArrayHelper.toIntArray( sourcePositions )
+			);
+		}
 	}
 }

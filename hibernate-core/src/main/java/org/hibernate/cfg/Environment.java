@@ -1,45 +1,26 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2010, Red Hat Inc. or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Inc.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.cfg;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.sql.Connection;
-import java.sql.Timestamp;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
 
-import org.jboss.logging.Logger;
-
 import org.hibernate.HibernateException;
 import org.hibernate.Version;
 import org.hibernate.bytecode.spi.BytecodeProvider;
+import org.hibernate.engine.jdbc.connections.internal.ConnectionProviderInitiator;
 import org.hibernate.internal.CoreMessageLogger;
 import org.hibernate.internal.util.ConfigHelper;
 import org.hibernate.internal.util.config.ConfigurationHelper;
+
+import org.jboss.logging.Logger;
 
 
 /**
@@ -66,7 +47,7 @@ import org.hibernate.internal.util.config.ConfigurationHelper;
  * Properties may be either be <tt>System</tt> properties, properties
  * defined in a resource named <tt>/hibernate.properties</tt> or an instance of
  * <tt>java.util.Properties</tt> passed to
- * <tt>Configuration.buildSessionFactory()</tt><br>
+ * <tt>Configuration.build()</tt><br>
  * <br>
  * <table>
  * <tr><td><b>property</b></td><td><b>meaning</b></td></tr>
@@ -76,7 +57,7 @@ import org.hibernate.internal.util.config.ConfigurationHelper;
  * </tr>
  * <tr>
  *   <td><tt>hibernate.connection.provider_class</tt></td>
- *   <td>classname of <tt>org.hibernate.service.jdbc.connections.spi.ConnectionProvider</tt>
+ *   <td>classname of <tt>ConnectionProvider</tt>
  *   subclass (if not specified hueristics are used)</td>
  * </tr>
  * <tr><td><tt>hibernate.connection.username</tt></td><td>database username</td></tr>
@@ -151,8 +132,8 @@ import org.hibernate.internal.util.config.ConfigurationHelper;
  *   Session</tt> (de)serialization.</td>
  * </tr>
  * <tr>
- *   <td><tt>hibernate.transaction.manager_lookup_class</tt></td>
- *   <td>classname of <tt>org.hibernate.transaction.TransactionManagerLookup</tt>
+ *   <td><tt>hibernate.transaction.jta.platform</tt></td>
+ *   <td>classname of <tt>org.hibernate.engine.transaction.jta.platform.spi.JtaPlatform</tt>
  *   implementor</td>
  * </tr>
  * <tr>
@@ -169,15 +150,13 @@ import org.hibernate.internal.util.config.ConfigurationHelper;
  * @author Gavin King
  */
 public final class Environment implements AvailableSettings {
-	private static final CoreMessageLogger LOG = Logger.getMessageLogger(CoreMessageLogger.class, Environment.class.getName());
+	private static final CoreMessageLogger LOG = Logger.getMessageLogger( CoreMessageLogger.class, Environment.class.getName());
 
 	private static final BytecodeProvider BYTECODE_PROVIDER_INSTANCE;
 	private static final boolean ENABLE_BINARY_STREAMS;
 	private static final boolean ENABLE_REFLECTION_OPTIMIZER;
-	private static final boolean JVM_HAS_TIMESTAMP_BUG;
 
 	private static final Properties GLOBAL_PROPERTIES;
-	private static final Map<Integer,String> ISOLATION_LEVELS;
 
 	private static final Map OBSOLETE_PROPERTIES = new HashMap();
 	private static final Map RENAMED_PROPERTIES = new HashMap();
@@ -206,13 +185,6 @@ public final class Environment implements AvailableSettings {
 	static {
 		Version.logVersion();
 
-		Map<Integer,String> temp = new HashMap<Integer,String>();
-		temp.put( Connection.TRANSACTION_NONE, "NONE" );
-		temp.put( Connection.TRANSACTION_READ_UNCOMMITTED, "READ_UNCOMMITTED" );
-		temp.put( Connection.TRANSACTION_READ_COMMITTED, "READ_COMMITTED" );
-		temp.put( Connection.TRANSACTION_REPEATABLE_READ, "REPEATABLE_READ" );
-		temp.put( Connection.TRANSACTION_SERIALIZABLE, "SERIALIZABLE" );
-		ISOLATION_LEVELS = Collections.unmodifiableMap( temp );
 		GLOBAL_PROPERTIES = new Properties();
 		//Set USE_REFLECTION_OPTIMIZER to false to fix HHH-227
 		GLOBAL_PROPERTIES.setProperty( USE_REFLECTION_OPTIMIZER, Boolean.FALSE.toString() );
@@ -240,7 +212,12 @@ public final class Environment implements AvailableSettings {
 		}
 
 		try {
-			GLOBAL_PROPERTIES.putAll( System.getProperties() );
+			Properties systemProperties = System.getProperties();
+		    // Must be thread-safe in case an application changes System properties during Hibernate initialization.
+		    // See HHH-8383.
+			synchronized (systemProperties) {
+				GLOBAL_PROPERTIES.putAll(systemProperties);
+			}
 		}
 		catch (SecurityException se) {
 			LOG.unableToCopySystemProperties();
@@ -259,29 +236,6 @@ public final class Environment implements AvailableSettings {
 		}
 
 		BYTECODE_PROVIDER_INSTANCE = buildBytecodeProvider( GLOBAL_PROPERTIES );
-
-		long x = 123456789;
-		JVM_HAS_TIMESTAMP_BUG = new Timestamp(x).getTime() != x;
-		if ( JVM_HAS_TIMESTAMP_BUG ) {
-			LOG.usingTimestampWorkaround();
-		}
-	}
-
-	public static BytecodeProvider getBytecodeProvider() {
-		return BYTECODE_PROVIDER_INSTANCE;
-	}
-
-	/**
-	 * Does this JVM's implementation of {@link java.sql.Timestamp} have a bug in which the following is true:<code>
-	 * new java.sql.Timestamp( x ).getTime() != x
-	 * </code>
-	 * <p/>
-	 * NOTE : IBM JDK 1.3.1 the only known JVM to exhibit this behavior.
-	 *
-	 * @return True if the JVM's {@link Timestamp} implementa
-	 */
-	public static boolean jvmHasTimestampBug() {
-		return JVM_HAS_TIMESTAMP_BUG;
 	}
 
 	/**
@@ -290,7 +244,14 @@ public final class Environment implements AvailableSettings {
 	 * @return True if streams should be used for binary data handling; false otherwise.
 	 *
 	 * @see #USE_STREAMS_FOR_BINARY
+	 *
+	 * @deprecated Deprecated to indicate that the method will be moved to
+	 * {@link org.hibernate.boot.spi.SessionFactoryOptions} /
+	 * {@link org.hibernate.boot.SessionFactoryBuilder} - probably in 6.0.
+	 * See <a href="https://hibernate.atlassian.net/browse/HHH-12194">HHH-12194</a> and
+	 * <a href="https://hibernate.atlassian.net/browse/HHH-12193">HHH-12193</a> for details
 	 */
+	@Deprecated
 	public static boolean useStreamsForBinary() {
 		return ENABLE_BINARY_STREAMS;
 	}
@@ -303,9 +264,28 @@ public final class Environment implements AvailableSettings {
 	 * @see #USE_REFLECTION_OPTIMIZER
 	 * @see #getBytecodeProvider()
 	 * @see BytecodeProvider#getReflectionOptimizer
+	 *
+	 * @deprecated Deprecated to indicate that the method will be moved to
+	 * {@link org.hibernate.boot.spi.SessionFactoryOptions} /
+	 * {@link org.hibernate.boot.SessionFactoryBuilder} - probably in 6.0.
+	 * See <a href="https://hibernate.atlassian.net/browse/HHH-12194">HHH-12194</a> and
+	 * <a href="https://hibernate.atlassian.net/browse/HHH-12193">HHH-12193</a> for details
 	 */
+	@Deprecated
 	public static boolean useReflectionOptimizer() {
 		return ENABLE_REFLECTION_OPTIMIZER;
+	}
+
+	/**
+	 * @deprecated Deprecated to indicate that the method will be moved to
+	 * {@link org.hibernate.boot.spi.SessionFactoryOptions} /
+	 * {@link org.hibernate.boot.SessionFactoryBuilder} - probably in 6.0.
+	 * See <a href="https://hibernate.atlassian.net/browse/HHH-12194">HHH-12194</a> and
+	 * <a href="https://hibernate.atlassian.net/browse/HHH-12193">HHH-12193</a> for details
+	 */
+	@Deprecated
+	public static BytecodeProvider getBytecodeProvider() {
+		return BYTECODE_PROVIDER_INSTANCE;
 	}
 
 	/**
@@ -327,28 +307,38 @@ public final class Environment implements AvailableSettings {
 	}
 
 	/**
-	 * Get the name of a JDBC transaction isolation level
-	 *
-	 * @see java.sql.Connection
-	 * @param isolation as defined by <tt>java.sql.Connection</tt>
-	 * @return a human-readable name
+	 * @deprecated Use {@link ConnectionProviderInitiator#toIsolationNiceName} instead
 	 */
+	@Deprecated
 	public static String isolationLevelToString(int isolation) {
-		return ISOLATION_LEVELS.get( isolation );
+		return ConnectionProviderInitiator.toIsolationNiceName( isolation );
 	}
 
+
+	public static final String BYTECODE_PROVIDER_NAME_JAVASSIST = "javassist";
+	public static final String BYTECODE_PROVIDER_NAME_BYTEBUDDY = "bytebuddy";
+	public static final String BYTECODE_PROVIDER_NAME_DEFAULT = BYTECODE_PROVIDER_NAME_JAVASSIST;
+
 	public static BytecodeProvider buildBytecodeProvider(Properties properties) {
-		String provider = ConfigurationHelper.getString( BYTECODE_PROVIDER, properties, "javassist" );
-		LOG.bytecodeProvider( provider );
+		String provider = ConfigurationHelper.getString( BYTECODE_PROVIDER, properties, BYTECODE_PROVIDER_NAME_DEFAULT );
 		return buildBytecodeProvider( provider );
 	}
 
 	private static BytecodeProvider buildBytecodeProvider(String providerName) {
-		if ( "javassist".equals( providerName ) ) {
+		if ( BYTECODE_PROVIDER_NAME_BYTEBUDDY.equals( providerName ) ) {
+			return new org.hibernate.bytecode.internal.bytebuddy.BytecodeProviderImpl();
+		}
+
+		if ( BYTECODE_PROVIDER_NAME_JAVASSIST.equals( providerName ) ) {
 			return new org.hibernate.bytecode.internal.javassist.BytecodeProviderImpl();
 		}
 
-		LOG.unknownBytecodeProvider( providerName );
+		LOG.bytecodeProvider( providerName );
+
+		// todo : allow a custom class name - just check if the config is a FQN
+		//		currently we assume it is only ever the Strings "javassist" or "bytebuddy"...
+
+		LOG.unknownBytecodeProvider( providerName, BYTECODE_PROVIDER_NAME_DEFAULT );
 		return new org.hibernate.bytecode.internal.javassist.BytecodeProviderImpl();
 	}
 }

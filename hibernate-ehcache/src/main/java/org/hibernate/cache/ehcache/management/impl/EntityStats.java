@@ -1,31 +1,13 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2011, Red Hat Inc. or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Inc.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.cache.ehcache.management.impl;
 
 import java.io.Serializable;
 import java.util.ArrayList;
-import java.util.Iterator;
 import java.util.List;
 import javax.management.openmbean.CompositeData;
 import javax.management.openmbean.CompositeDataSupport;
@@ -63,7 +45,7 @@ public class EntityStats implements Serializable {
 	private static final CompositeType COMPOSITE_TYPE;
 	private static final String TABULAR_TYPE_NAME = "Statistics by Entity";
 	private static final String TABULAR_TYPE_DESCRIPTION = "All Entity Statistics";
-	private static final String[] INDEX_NAMES = new String[] { "name", };
+	private static final String[] INDEX_NAMES = new String[] {"name",};
 	private static final TabularType TABULAR_TYPE;
 
 	static {
@@ -74,7 +56,7 @@ public class EntityStats implements Serializable {
 			);
 			TABULAR_TYPE = new TabularType( TABULAR_TYPE_NAME, TABULAR_TYPE_DESCRIPTION, COMPOSITE_TYPE, INDEX_NAMES );
 		}
-		catch ( OpenDataException e ) {
+		catch (OpenDataException e) {
 			throw new RuntimeException( e );
 		}
 	}
@@ -120,7 +102,8 @@ public class EntityStats implements Serializable {
 	protected long optimisticFailureCount;
 
 	/**
-	 * @param name
+	 * Constructor only naming the stat
+	 * @param name the name of the entity
 	 */
 	public EntityStats(String name) {
 		this.name = name;
@@ -128,8 +111,9 @@ public class EntityStats implements Serializable {
 	}
 
 	/**
-	 * @param name
-	 * @param src
+	 * Constructor naming the stat and sourcing stats
+	 * @param name the name of the entity
+	 * @param src its source for the stats to expose
 	 */
 	public EntityStats(String name, EntityStatistics src) {
 		this( name );
@@ -142,15 +126,17 @@ public class EntityStats implements Serializable {
 			this.fetchCount = BeanUtils.getLongBeanProperty( src, "fetchCount" );
 			this.optimisticFailureCount = BeanUtils.getLongBeanProperty( src, "optimisticFailureCount" );
 		}
-		catch ( Exception e ) {
+		catch (Exception e) {
 			e.printStackTrace();
 			throw new RuntimeException( "Exception retrieving statistics", e );
 		}
 	}
 
 	/**
-	 * @param cData
+	 * Constructor from compositeDate
+	 * @param cData CompositeData of the stats
 	 */
+	@SuppressWarnings("UnusedAssignment")
 	public EntityStats(final CompositeData cData) {
 		int i = 0;
 		name = (String) cData.get( ITEM_NAMES[i++] );
@@ -163,17 +149,9 @@ public class EntityStats implements Serializable {
 		optimisticFailureCount = (Long) cData.get( ITEM_NAMES[i++] );
 	}
 
-	private static int safeParseInt(String s) {
-		try {
-			return Integer.parseInt( s );
-		}
-		catch ( Exception e ) {
-			return -1;
-		}
-	}
-
 	/**
-	 * @param stats
+	 * Adds the counters of this instance up with the ones passed in
+	 * @param stats the stats to add to this one
 	 */
 	public void add(EntityStats stats) {
 		loadCount += stats.getLoadCount();
@@ -185,7 +163,7 @@ public class EntityStats implements Serializable {
 	}
 
 	/**
-	 * toString
+	 * {@inheritDoc}
 	 */
 	@Override
 	public String toString() {
@@ -195,63 +173,73 @@ public class EntityStats implements Serializable {
 	}
 
 	/**
-	 * getName
+	 * The name of the entity those stats are about
+	 * @return the entity name
 	 */
 	public String getName() {
 		return name;
 	}
 
 	/**
-	 * getShortName
+	 * The short name of the entity those stats are about
+	 * @return the shortName of the entity
 	 */
+	@SuppressWarnings("UnusedDeclaration")
 	public String getShortName() {
 		return shortName;
 	}
 
 	/**
-	 * getLoadCount
+	 * Amount of load ops on the entity
+	 * @return the load count
 	 */
 	public long getLoadCount() {
 		return loadCount;
 	}
 
 	/**
-	 * getUpdateCount
+	 * Amount of update ops on the entity
+	 * @return the update count
 	 */
 	public long getUpdateCount() {
 		return updateCount;
 	}
 
 	/**
-	 * getInsertCount
+	 * Amount of insert ops on the entity
+	 * @return the insert count
 	 */
 	public long getInsertCount() {
 		return insertCount;
 	}
 
 	/**
-	 * getDeleteCount
+	 * Amount of delete ops on the entity
+	 * @return the delete count
 	 */
 	public long getDeleteCount() {
 		return deleteCount;
 	}
 
 	/**
-	 * getFetchCount
+	 * Amount of fetch ops on the entity
+	 * @return the fetch count
 	 */
 	public long getFetchCount() {
 		return fetchCount;
 	}
 
 	/**
-	 * getOptimisticFailureCount
+	 * Amount of optimistic failures on the entity
+	 * @return the optimistic failure count
 	 */
 	public long getOptimisticFailureCount() {
 		return optimisticFailureCount;
 	}
 
 	/**
-	 * toCompositeData
+	 * Creates a CompositeData instance of this instance
+	 * @return the compositeData representation of this instance
 	 */
 	public CompositeData toCompositeData() {
 		try {
@@ -262,25 +250,29 @@ public class EntityStats implements Serializable {
 			}
 			);
 		}
-		catch ( OpenDataException e ) {
+		catch (OpenDataException e) {
 			throw new RuntimeException( e );
 		}
 	}
 
 	/**
-	 * newTabularDataInstance
+	 * Creates a new TabularData
+	 * @return a new TabularData instance
 	 */
 	public static TabularData newTabularDataInstance() {
 		return new TabularDataSupport( TABULAR_TYPE );
 	}
 
 	/**
-	 * fromTabularData
+	 * Reads an array of entityStats from TabularData
+	 * @param tabularData the tabularData with the {@link CompositeData} of stats to extract
+	 * @return all entityStats as an array
 	 */
+	@SuppressWarnings({"unchecked", "UnusedDeclaration"})
 	public static EntityStats[] fromTabularData(final TabularData tabularData) {
 		final List<EntityStats> countList = new ArrayList( tabularData.size() );
-		for ( final Iterator pos = tabularData.values().iterator(); pos.hasNext(); ) {
-			countList.add( new EntityStats( (CompositeData) pos.next() ) );
+		for ( Object o : tabularData.values() ) {
+			countList.add( new EntityStats( (CompositeData) o ) );
 		}
 		return countList.toArray( new EntityStats[countList.size()] );
 	}

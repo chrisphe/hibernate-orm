@@ -1,27 +1,11 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2010, Red Hat Inc. or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Inc.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.mapping;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -29,6 +13,8 @@ import java.util.Map;
 
 import org.hibernate.AssertionFailure;
 import org.hibernate.EntityMode;
+import org.hibernate.boot.spi.MetadataBuildingContext;
+import org.hibernate.engine.OptimisticLockStyle;
 import org.hibernate.internal.util.collections.JoinedIterator;
 import org.hibernate.internal.util.collections.SingletonIterator;
 
@@ -37,12 +23,12 @@ import org.hibernate.internal.util.collections.SingletonIterator;
  * @author Gavin King
  */
 public class Subclass extends PersistentClass {
-
 	private PersistentClass superclass;
 	private Class classPersisterClass;
 	private final int subclassId;
 	
-	public Subclass(PersistentClass superclass) {
+	public Subclass(PersistentClass superclass, MetadataBuildingContext metadataBuildingContext) {
+		super( metadataBuildingContext );
 		this.superclass = superclass;
 		this.subclassId = superclass.nextSubclassId();
 	}
@@ -61,7 +47,7 @@ public class Subclass extends PersistentClass {
 	}
 
 	public String getCacheConcurrencyStrategy() {
-		return getSuperclass().getCacheConcurrencyStrategy();
+		return getRootClass().getCacheConcurrencyStrategy();
 	}
 
 	public RootClass getRootClass() {
@@ -204,10 +190,6 @@ public class Subclass extends PersistentClass {
 		this.classPersisterClass = classPersisterClass;
 	}
 
-	public boolean isLazyPropertiesCacheable() {
-		return getSuperclass().isLazyPropertiesCacheable();
-	}
-
 	public int getJoinClosureSpan() {
 		return getSuperclass().getJoinClosureSpan() + super.getJoinClosureSpan();
 	}
@@ -254,8 +236,10 @@ public class Subclass extends PersistentClass {
 		return mv.accept(this);
 	}
 
-	public Map getFilterMap() {
-		return getSuperclass().getFilterMap();
+	public java.util.List getFilters() {
+		java.util.List filters = new ArrayList(super.getFilters());
+		filters.addAll(getSuperclass().getFilters());
+		return filters;
 	}
 
 	public boolean hasSubselectLoadableCollections() {
@@ -292,9 +276,9 @@ public class Subclass extends PersistentClass {
 	public Component getIdentifierMapper() {
 		return superclass.getIdentifierMapper();
 	}
-	
-	public int getOptimisticLockMode() {
-		return superclass.getOptimisticLockMode();
-	}
 
+	@Override
+	public OptimisticLockStyle getOptimisticLockStyle() {
+		return superclass.getOptimisticLockStyle();
+	}
 }

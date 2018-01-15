@@ -1,84 +1,62 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2010, Red Hat Inc. or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Inc.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate;
+
+import java.util.Calendar;
+import java.util.Collection;
+import java.util.Date;
+import java.util.List;
+import java.util.Map;
+import javax.persistence.FlushModeType;
+import javax.persistence.Parameter;
+import javax.persistence.TemporalType;
+
+import org.hibernate.engine.query.spi.sql.NativeSQLQueryReturn;
+import org.hibernate.query.NativeQuery;
+import org.hibernate.query.QueryParameter;
 import org.hibernate.type.Type;
 
 /**
- * Represents a "native sql" query and allows the user to define certain aspects about its execution, such as:<ul>
- * <li>result-set value mapping (see below)</li>
- * <li>
- * 	Tables used via {@link #addSynchronizedQuerySpace}, {@link #addSynchronizedEntityName} and
- *  {@link #addSynchronizedEntityClass}.  This allows Hibernate to properly know how to deal with auto-flush checking
- *  as well as cached query results if the results of the query are being cached.
- * </li>
- * </ul>
- * <p/>
- * In terms of result-set mapping, there are 3 approaches to defining:<ul>
- * <li>If this represents a named sql query, the mapping could be associated with the query as part of its metadata</li>
- * <li>A pre-defined (defined in metadata and named) mapping can be associated with {@link #setResultSetMapping}</li>
- * <li>Defined locally per the various {@link #addEntity}, {@link #addRoot}, {@link #addJoin}, {@link #addFetch} and {@link #addScalar} methods</li>
+ * Represents a "native sql" query.
  *
+ * Allows the user to define certain aspects about its execution, such as:<ul>
+ *     <li>
+ *         result-set value mapping (see below)
+ *     </li>
+ *     <li>
+ *         Tables used via {@link #addSynchronizedQuerySpace}, {@link #addSynchronizedEntityName} and
+ *         {@link #addSynchronizedEntityClass}.  This allows Hibernate to know how to properly deal with
+ *         auto-flush checking as well as cached query results if the results of the query are being
+ *         cached.
+ *     </li>
+ * </ul>
+ *
+ * In terms of result-set mapping, there are 3 approaches to defining:<ul>
+ *     <li>
+ *         If this represents a named sql query, the mapping could be associated with the query as part
+ *         of its metadata
+ *     </li>
+ *     <li>
+ *         A pre-defined (defined in metadata and named) mapping can be associated with
+ *         {@link #setResultSetMapping}
+ *     </li>
+ *     <li>
+ *         Defined locally per the various {@link #addEntity}, {@link #addRoot}, {@link #addJoin},
+ *         {@link #addFetch} and {@link #addScalar} methods
+ *     </li>
  * </ul>
  * 
  * @author Gavin King
  * @author Steve Ebersole
+ *
+ * @deprecated (since 5.2) use {@link NativeQuery} instead.
  */
-public interface SQLQuery extends Query {
-
-	/**
-	 * Adds a query space (table name) for (a) auto-flush checking and (b) query result cache invalidation checking
-	 *
-	 * @param querySpace The query space to be auto-flushed for this query.
-	 *
-	 * @return this, for method chaining
-	 */
-	public SQLQuery addSynchronizedQuerySpace(String querySpace);
-
-	/**
-	 * Adds an entity name for (a) auto-flush checking and (b) query result cache invalidation checking.  Same as
-	 * {@link #addSynchronizedQuerySpace} for all tables associated with the given entity.
-	 *
-	 * @param entityName The name of the entity upon whose defined query spaces we should additionally synchronize.
-	 *
-	 * @return this, for method chaining
-	 *
-	 * @throws MappingException Indicates the given name could not be resolved as an entity
-	 */
-	public SQLQuery addSynchronizedEntityName(String entityName) throws MappingException;
-
-	/**
-	 * Adds an entity for (a) auto-flush checking and (b) query result cache invalidation checking.  Same as
-	 * {@link #addSynchronizedQuerySpace} for all tables associated with the given entity.
-	 *
-	 * @param entityClass The class of the entity upon whose defined query spaces we should additionally synchronize.
-	 *
-	 * @return this, for method chaining
-	 *
-	 * @throws MappingException Indicates the given class could not be resolved as an entity
-	 */
-	public SQLQuery addSynchronizedEntityClass(Class entityClass) throws MappingException;
-
+@Deprecated
+public interface SQLQuery<T> extends Query<T>, SynchronizeableQuery<T> {
 	/**
 	 * Use a predefined named result-set mapping.  This might be defined by a {@code <result-set/>} element in a
 	 * Hibernate <tt>hbm.xml</tt> file or through a {@link javax.persistence.SqlResultSetMapping} annotation.
@@ -87,7 +65,21 @@ public interface SQLQuery extends Query {
 	 *
 	 * @return this, for method chaining
 	 */
-	public SQLQuery setResultSetMapping(String name);
+	NativeQuery<T> setResultSetMapping(String name);
+
+	/**
+	 * Is this native-SQL query known to be callable?
+	 *
+	 * @return {@code true} if the query is known to be callable; {@code false} otherwise.
+	 */
+	boolean isCallable();
+
+	/**
+	 * Retrieve the returns associated with this query.
+	 *
+	 * @return The return descriptors
+	 */
+	List<NativeSQLQueryReturn> getQueryReturns();
 
 	/**
 	 * Declare a scalar query result. Hibernate will attempt to automatically detect the underlying type.
@@ -98,7 +90,7 @@ public interface SQLQuery extends Query {
 	 *
 	 * @return {@code this}, for method chaining
 	 */
-	public SQLQuery addScalar(String columnAlias);
+	NativeQuery<T> addScalar(String columnAlias);
 
 	/**
 	 * Declare a scalar query result.
@@ -110,10 +102,10 @@ public interface SQLQuery extends Query {
 	 *
 	 * @return {@code this}, for method chaining
 	 */
-	public SQLQuery addScalar(String columnAlias, Type type);
+	NativeQuery<T> addScalar(String columnAlias, Type type);
 
 	/**
-	 * Add a new root return mapping, returning a {@link RootReturn} to allow further definition
+	 * Add a new root return mapping, returning a {@link NativeQuery.RootReturn} to allow further definition.
 	 *
 	 * @param tableAlias The SQL table alias to map to this entity
 	 * @param entityName The name of the entity.
@@ -122,10 +114,10 @@ public interface SQLQuery extends Query {
 	 *
 	 * @since 3.6
 	 */
-	public RootReturn addRoot(String tableAlias, String entityName);
+	RootReturn addRoot(String tableAlias, String entityName);
 
 	/**
-	 * Add a new root return mapping, returning a {@link RootReturn} to allow further definition
+	 * Add a new root return mapping, returning a {@link NativeQuery.RootReturn} to allow further definition.
 	 *
 	 * @param tableAlias The SQL table alias to map to this entity
 	 * @param entityType The java type of the entity.
@@ -134,7 +126,7 @@ public interface SQLQuery extends Query {
 	 *
 	 * @since 3.6
 	 */
-	public RootReturn addRoot(String tableAlias, Class entityType);
+	RootReturn addRoot(String tableAlias, Class entityType);
 
 	/**
 	 * Declare a "root" entity, without specifying an alias.  The expectation here is that the table alias is the
@@ -146,20 +138,20 @@ public interface SQLQuery extends Query {
 	 *
 	 * @return {@code this}, for method chaining
 	 */
-	public SQLQuery addEntity(String entityName);
+	NativeQuery<T> addEntity(String entityName);
 
 	/**
-	 * Declare a "root" entity
+	 * Declare a "root" entity.
 	 *
 	 * @param tableAlias The SQL table alias
 	 * @param entityName The entity name
 	 *
 	 * @return {@code this}, for method chaining
 	 */
-	public SQLQuery addEntity(String tableAlias, String entityName);
+	NativeQuery<T> addEntity(String tableAlias, String entityName);
 
 	/**
-	 * Declare a "root" entity, specifying a lock mode
+	 * Declare a "root" entity, specifying a lock mode.
 	 *
 	 * @param tableAlias The SQL table alias
 	 * @param entityName The entity name
@@ -167,7 +159,7 @@ public interface SQLQuery extends Query {
 	 *
 	 * @return {@code this}, for method chaining
 	 */
-	public SQLQuery addEntity(String tableAlias, String entityName, LockMode lockMode);
+	NativeQuery<T> addEntity(String tableAlias, String entityName, LockMode lockMode);
 
 	/**
 	 * Declare a "root" entity, without specifying an alias.  The expectation here is that the table alias is the
@@ -177,28 +169,28 @@ public interface SQLQuery extends Query {
 	 *
 	 * @return {@code this}, for method chaining
 	 */
-	public SQLQuery addEntity(Class entityType);
+	NativeQuery<T> addEntity(Class entityType);
 
 	/**
-	 * Declare a "root" entity
+	 * Declare a "root" entity.
 	 *
 	 * @param tableAlias The SQL table alias
 	 * @param entityType The java type of the entity to add as a root
 	 *
 	 * @return {@code this}, for method chaining
 	 */
-	public SQLQuery addEntity(String tableAlias, Class entityType);
+	NativeQuery<T> addEntity(String tableAlias, Class entityType);
 
 	/**
-	 * Declare a "root" entity, specifying a lock mode
+	 * Declare a "root" entity, specifying a lock mode.
 	 *
 	 * @param tableAlias The SQL table alias
-	 * @param entityName The entity name
+	 * @param entityClass The entity Class
 	 * @param lockMode The lock mode for this return.
 	 *
 	 * @return {@code this}, for method chaining
 	 */
-	public SQLQuery addEntity(String tableAlias, Class entityName, LockMode lockMode);
+	NativeQuery<T> addEntity(String tableAlias, Class entityClass, LockMode lockMode);
 
 	/**
 	 * Declare a join fetch result.
@@ -212,7 +204,7 @@ public interface SQLQuery extends Query {
 	 *
 	 * @since 3.6
 	 */
-	public FetchReturn addFetch(String tableAlias, String ownerTableAlias, String joinPropertyName);
+	FetchReturn addFetch(String tableAlias, String ownerTableAlias, String joinPropertyName);
 
 	/**
 	 * Declare a join fetch result.
@@ -222,7 +214,7 @@ public interface SQLQuery extends Query {
 	 *
 	 * @return {@code this}, for method chaining
 	 */
-	public SQLQuery addJoin(String tableAlias, String path);
+	NativeQuery<T> addJoin(String tableAlias, String path);
 
 	/**
 	 * Declare a join fetch result.
@@ -236,10 +228,10 @@ public interface SQLQuery extends Query {
 	 *
 	 * @since 3.6
 	 */
-	public SQLQuery addJoin(String tableAlias, String ownerTableAlias, String joinPropertyName);
+	NativeQuery<T> addJoin(String tableAlias, String ownerTableAlias, String joinPropertyName);
 
 	/**
-	 * Declare a join fetch result, specifying a lock mode
+	 * Declare a join fetch result, specifying a lock mode.
 	 *
 	 * @param tableAlias The SQL table alias for the data to be mapped to this fetch
 	 * @param path The association path ([owner-alias].[property-name]).
@@ -247,13 +239,13 @@ public interface SQLQuery extends Query {
 	 *
 	 * @return {@code this}, for method chaining
 	 */
-	public SQLQuery addJoin(String tableAlias, String path, LockMode lockMode);
+	NativeQuery<T> addJoin(String tableAlias, String path, LockMode lockMode);
 
 	/**
 	 * Allows access to further control how properties within a root or join fetch are mapped back from the result set.
 	 * Generally used in composite value scenarios.
 	 */
-	public static interface ReturnProperty {
+	interface ReturnProperty {
 		/**
 		 * Add a column alias to this property mapping.
 		 *
@@ -261,40 +253,40 @@ public interface SQLQuery extends Query {
 		 *
 		 * @return {@code this}, for method chaining
 		 */
-		public ReturnProperty addColumnAlias(String columnAlias);
+		ReturnProperty addColumnAlias(String columnAlias);
 	}
 
 	/**
-	 * Allows access to further control how root returns are mapped back from result sets
+	 * Allows access to further control how root returns are mapped back from result sets.
 	 */
-	public static interface RootReturn {
+	interface RootReturn {
 		/**
-		 * Set the lock mode for this return
+		 * Set the lock mode for this return.
 		 *
 		 * @param lockMode The new lock mode.
 		 *
 		 * @return {@code this}, for method chaining
 		 */
-		public RootReturn setLockMode(LockMode lockMode);
+		RootReturn setLockMode(LockMode lockMode);
 
 		/**
-		 * Name the column alias that identifies the entity's discriminator
+		 * Name the column alias that identifies the entity's discriminator.
 		 *
 		 * @param columnAlias The discriminator column alias
 		 *
 		 * @return {@code this}, for method chaining
 		 */
-		public RootReturn setDiscriminatorAlias(String columnAlias);
+		RootReturn setDiscriminatorAlias(String columnAlias);
 
 		/**
-		 * Add a simple property-to-one-column mapping
+		 * Add a simple property-to-one-column mapping.
 		 *
 		 * @param propertyName The name of the property.
 		 * @param columnAlias The name of the column
 		 *
 		 * @return {@code this}, for method chaining
 		 */
-		public RootReturn addProperty(String propertyName, String columnAlias);
+		RootReturn addProperty(String propertyName, String columnAlias);
 
 		/**
 		 * Add a property, presumably with more than one column.
@@ -303,31 +295,31 @@ public interface SQLQuery extends Query {
 		 *
 		 * @return The config object for further control.
 		 */
-		public ReturnProperty addProperty(String propertyName);
+		ReturnProperty addProperty(String propertyName);
 	}
 
 	/**
-	 * Allows access to further control how join fetch returns are mapped back from result sets
+	 * Allows access to further control how join fetch returns are mapped back from result sets.
 	 */
-	public static interface FetchReturn {
+	interface FetchReturn {
 		/**
-		 * Set the lock mode for this return
+		 * Set the lock mode for this return.
 		 *
 		 * @param lockMode The new lock mode.
 		 *
 		 * @return {@code this}, for method chaining
 		 */
-		public FetchReturn setLockMode(LockMode lockMode);
+		FetchReturn setLockMode(LockMode lockMode);
 
 		/**
-		 * Add a simple property-to-one-column mapping
+		 * Add a simple property-to-one-column mapping.
 		 *
 		 * @param propertyName The name of the property.
 		 * @param columnAlias The name of the column
 		 *
 		 * @return {@code this}, for method chaining
 		 */
-		public FetchReturn addProperty(String propertyName, String columnAlias);
+		FetchReturn addProperty(String propertyName, String columnAlias);
 
 		/**
 		 * Add a property, presumably with more than one column.
@@ -336,6 +328,129 @@ public interface SQLQuery extends Query {
 		 *
 		 * @return The config object for further control.
 		 */
-		public ReturnProperty addProperty(String propertyName);
+		ReturnProperty addProperty(String propertyName);
 	}
+
+
+	// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+	// overrides
+
+
+	@Override
+	NativeQuery<T> setHibernateFlushMode(FlushMode flushMode);
+
+	@Override
+	NativeQuery<T> setFlushMode(FlushModeType flushMode);
+
+	@Override
+	NativeQuery<T> setCacheMode(CacheMode cacheMode);
+
+	@Override
+	NativeQuery<T> setCacheable(boolean cacheable);
+
+	@Override
+	NativeQuery<T> setCacheRegion(String cacheRegion);
+
+	@Override
+	NativeQuery<T> setTimeout(int timeout);
+
+	@Override
+	NativeQuery<T> setFetchSize(int fetchSize);
+
+	@Override
+	NativeQuery<T> setReadOnly(boolean readOnly);
+
+	@Override
+	NativeQuery<T> setLockOptions(LockOptions lockOptions);
+
+	@Override
+	NativeQuery<T> setLockMode(String alias, LockMode lockMode);
+
+	@Override
+	NativeQuery<T> setComment(String comment);
+
+	@Override
+	NativeQuery<T> addQueryHint(String hint);
+
+	@Override
+	<P> NativeQuery<T> setParameter(QueryParameter<P> parameter, P val);
+
+	@Override
+	<P> NativeQuery<T> setParameter(Parameter<P> param, P value);
+
+	@Override
+	NativeQuery<T> setParameter(String name, Object val);
+
+	@Override
+	NativeQuery<T> setParameter(int position, Object val);
+
+	@Override
+	<P> NativeQuery<T> setParameter(QueryParameter<P> parameter, P val, Type type);
+
+	@Override
+	NativeQuery<T> setParameter(String name, Object val, Type type);
+
+	@Override
+	NativeQuery<T> setParameter(int position, Object val, Type type);
+
+	@Override
+	<P> NativeQuery<T> setParameter(QueryParameter<P> parameter, P val, TemporalType temporalType);
+
+	@Override
+	<P> NativeQuery<T> setParameter(String name, P val, TemporalType temporalType);
+
+	@Override
+	<P> NativeQuery<T> setParameter(int position, P val, TemporalType temporalType);
+
+	@Override
+	<P> NativeQuery<T> setParameterList(QueryParameter<P> parameter, Collection<P> values);
+
+	@Override
+	NativeQuery<T> setParameterList(String name, Collection values);
+
+	@Override
+	NativeQuery<T> setParameterList(String name, Collection values, Type type);
+
+	@Override
+	NativeQuery<T> setParameterList(String name, Object[] values, Type type);
+
+	@Override
+	NativeQuery<T> setParameterList(String name, Object[] values);
+
+	@Override
+	NativeQuery<T> setProperties(Object bean);
+
+	@Override
+	NativeQuery<T> setProperties(Map bean);
+
+	@Override
+	NativeQuery<T> setParameter(Parameter<Calendar> param, Calendar value, TemporalType temporalType);
+
+	@Override
+	NativeQuery<T> setParameter(Parameter<Date> param, Date value, TemporalType temporalType);
+
+	@Override
+	NativeQuery<T> setParameter(String name, Calendar value, TemporalType temporalType);
+
+	@Override
+	NativeQuery<T> setParameter(String name, Date value, TemporalType temporalType);
+
+	@Override
+	NativeQuery<T> setParameter(int position, Calendar value, TemporalType temporalType);
+
+	@Override
+	NativeQuery<T> setParameter(int position, Date value, TemporalType temporalType);
+
+	@Override
+	NativeQuery<T> addSynchronizedQuerySpace(String querySpace);
+
+	@Override
+	NativeQuery<T> addSynchronizedEntityName(String entityName) throws MappingException;
+
+	@Override
+	NativeQuery<T> addSynchronizedEntityClass(Class entityClass) throws MappingException;
+
+	@Override
+	NativeQuery<T> setFlushMode(FlushMode flushMode);
+
 }

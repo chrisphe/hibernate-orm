@@ -1,36 +1,18 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2010, Red Hat Inc. or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Inc.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.type.descriptor.java;
 
 import java.util.Comparator;
 import java.util.Locale;
-import java.util.StringTokenizer;
 
 import org.hibernate.type.descriptor.WrapperOptions;
 
 /**
- * TODO : javadoc
+ * Descriptor for {@link Locale} handling.
  *
  * @author Steve Ebersole
  */
@@ -59,17 +41,53 @@ public class LocaleTypeDescriptor extends AbstractTypeDescriptor<Locale> {
 	}
 
 	public Locale fromString(String string) {
-		StringTokenizer tokens = new StringTokenizer( string, "_" );
-		String language = tokens.hasMoreTokens() ? tokens.nextToken() : "";
-		String country = tokens.hasMoreTokens() ? tokens.nextToken() : "";
-		// Need to account for allowable '_' within the variant
-		String variant = "";
-		String sep = "";
-		while ( tokens.hasMoreTokens() ) {
-			variant += sep + tokens.nextToken();
-			sep = "_";
+		// TODO : Ultimately switch to Locale.Builder for this. However, Locale.Builder is Java 7
+
+		if ( string == null ) {
+			return null;
 		}
-		return new Locale( language, country, variant );
+
+		if( string.isEmpty() ) {
+			return Locale.ROOT;
+		}
+
+		boolean separatorFound = false;
+		int position = 0;
+		char[] chars = string.toCharArray();
+
+		for ( int i = 0; i < chars.length; i++ ) {
+			// We just look for separators
+			if ( chars[i] == '_' ) {
+				if ( !separatorFound ) {
+					// On the first separator we know that we have at least a language
+					string = new String( chars, position, i - position );
+					position = i + 1;
+				}
+				else {
+					// On the second separator we have to check whether there are more chars available for variant
+					if ( chars.length > i + 1 ) {
+						// There is a variant so add it to the constructor
+						return new Locale( string, new String( chars, position, i - position ), new String( chars,
+								i + 1, chars.length - i - 1 ) );
+					}
+					else {
+						// No variant given, we just have language and country
+						return new Locale( string, new String( chars, position, i - position ), "" );
+					}
+				}
+
+				separatorFound = true;
+			}
+		}
+
+		if ( !separatorFound ) {
+			// No separator found, there is only a language
+			return new Locale( string );
+		}
+		else {
+			// Only one separator found, there is a language and a country
+			return new Locale( string, new String( chars, position, chars.length - position ) );
+		}
 	}
 
 	@SuppressWarnings({ "unchecked" })

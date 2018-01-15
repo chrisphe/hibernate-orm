@@ -1,25 +1,8 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2009-2012, Red Hat Inc. or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Inc.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate;
 
@@ -27,6 +10,7 @@ import java.io.Serializable;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
@@ -36,19 +20,19 @@ import java.util.Map;
  */
 public class LockOptions implements Serializable {
 	/**
-	 * NONE represents LockMode.NONE (timeout + scope do not apply)
+	 * Represents LockMode.NONE (timeout + scope do not apply).
 	 */
 	public static final LockOptions NONE = new LockOptions(LockMode.NONE);
 
 	/**
-	 * READ represents LockMode.READ (timeout + scope do not apply)
+	 * Represents LockMode.READ (timeout + scope do not apply).
 	 */
 	public static final LockOptions READ = new LockOptions(LockMode.READ);
 
 	/**
-	 * UPGRADE represents LockMode.UPGRADE (will wait forever for lock and
-	 * scope of false meaning only entity is locked)
+	 * Represents LockMode.UPGRADE (will wait forever for lock and scope of false meaning only entity is locked).
 	 */
+	@SuppressWarnings("deprecation")
 	public static final LockOptions UPGRADE = new LockOptions(LockMode.UPGRADE);
 
 	/**
@@ -63,13 +47,30 @@ public class LockOptions implements Serializable {
 	 */
 	public static final int WAIT_FOREVER = -1;
 
+	/**
+	 * Indicates that rows that are already locked should be skipped.
+	 * @see #getTimeOut()
+	 */
+	public static final int SKIP_LOCKED = -2;
+
 	private LockMode lockMode = LockMode.NONE;
 	private int timeout = WAIT_FOREVER;
-	private Map aliasSpecificLockModes = null; //initialize lazily as LockOptions is frequently created without needing this
 
+	private Map<String,LockMode> aliasSpecificLockModes;
+
+	private Boolean followOnLocking;
+
+	/**
+	 * Constructs a LockOptions with all default options.
+	 */
 	public LockOptions() {
 	}
 
+	/**
+	 * Constructs a LockOptions with the given lock mode.
+	 *
+	 * @param lockMode The lock mode to use
+	 */
 	public LockOptions( LockMode lockMode) {
 		this.lockMode = lockMode;
 	}
@@ -100,7 +101,6 @@ public class LockOptions implements Serializable {
 		return this;
 	}
 
-
 	/**
 	 * Specify the {@link LockMode} to be used for a specific query alias.
 	 *
@@ -114,7 +114,7 @@ public class LockOptions implements Serializable {
 	 */
 	public LockOptions setAliasSpecificLockMode(String alias, LockMode lockMode) {
 		if ( aliasSpecificLockModes == null ) {
-			aliasSpecificLockModes = new HashMap();
+			aliasSpecificLockModes = new LinkedHashMap<>();
 		}
 		aliasSpecificLockModes.put( alias, lockMode );
 		return this;
@@ -135,7 +135,7 @@ public class LockOptions implements Serializable {
 		if ( aliasSpecificLockModes == null ) {
 			return null;
 		}
-		return (LockMode) aliasSpecificLockModes.get( alias );
+		return aliasSpecificLockModes.get( alias );
 	}
 
 	/**
@@ -160,6 +160,16 @@ public class LockOptions implements Serializable {
 	}
 
 	/**
+	 * Does this LockOptions object define alias-specific lock modes?
+	 *
+	 * @return {@code true} if this LockOptions object define alias-specific lock modes; {@code false} otherwise.
+	 */
+	public boolean hasAliasSpecificLockModes() {
+		return aliasSpecificLockModes != null
+				&& ! aliasSpecificLockModes.isEmpty();
+	}
+
+	/**
 	 * Get the number of aliases that have specific lock modes defined.
 	 *
 	 * @return the number of explicitly defined alias lock modes.
@@ -172,15 +182,48 @@ public class LockOptions implements Serializable {
 	}
 
 	/**
-	 * Iterator for accessing Alias (key) and LockMode (value) as Map.Entry
+	 * Iterator for accessing Alias (key) and LockMode (value) as Map.Entry.
 	 *
 	 * @return Iterator for accessing the Map.Entry's
 	 */
-	public Iterator getAliasLockIterator() {
+	public Iterator<Map.Entry<String,LockMode>> getAliasLockIterator() {
+		return getAliasSpecificLocks().iterator();
+	}
+
+	/**
+	 * Iterable access to alias (key) and LockMode (value) as Map.Entry.
+	 *
+	 * @return Iterable for accessing the Map.Entry's
+	 */
+	public Iterable<Map.Entry<String,LockMode>> getAliasSpecificLocks() {
 		if ( aliasSpecificLockModes == null ) {
-			return Collections.emptyList().iterator();
+			return Collections.emptyList();
 		}
-		return aliasSpecificLockModes.entrySet().iterator();
+		return aliasSpecificLockModes.entrySet();
+	}
+
+	/**
+	 * Currently needed for follow-on locking.
+	 *
+	 * @return The greatest of all requested lock modes.
+	 */
+	public LockMode findGreatestLockMode() {
+		LockMode lockModeToUse = getLockMode();
+		if ( lockModeToUse == null ) {
+			lockModeToUse = LockMode.NONE;
+		}
+
+		if ( aliasSpecificLockModes == null ) {
+			return lockModeToUse;
+		}
+
+		for ( LockMode lockMode : aliasSpecificLockModes.values() ) {
+			if ( lockMode.greaterThan( lockModeToUse ) ) {
+				lockModeToUse = lockMode;
+			}
+		}
+
+		return lockModeToUse;
 	}
 
 	/**
@@ -189,9 +232,9 @@ public class LockOptions implements Serializable {
 	 * The timeout is the amount of time, in milliseconds, we should instruct the database
 	 * to wait for any requested pessimistic lock acquisition.
 	 * <p/>
-	 * {@link #NO_WAIT} and {@link #WAIT_FOREVER} represent 2 "magic" values.
+	 * {@link #NO_WAIT}, {@link #WAIT_FOREVER} or {@link #SKIP_LOCKED} represent 3 "magic" values.
 	 *
-	 * @return timeout in milliseconds, or {@link #NO_WAIT} or {@link #WAIT_FOREVER}
+	 * @return timeout in milliseconds, {@link #NO_WAIT}, {@link #WAIT_FOREVER} or {@link #SKIP_LOCKED}
 	 */
 	public int getTimeOut() {
 		return timeout;
@@ -213,7 +256,7 @@ public class LockOptions implements Serializable {
 		return this;
 	}
 
-	private boolean scope=false;
+	private boolean scope;
 
 	/**
 	 * Retrieve the current lock scope setting.
@@ -227,7 +270,7 @@ public class LockOptions implements Serializable {
 	}
 
 	/**
-	 * Set the cope.
+	 * Set the scope.
 	 *
 	 * @param scope The new scope setting
 	 *
@@ -239,19 +282,51 @@ public class LockOptions implements Serializable {
 	}
 
 	/**
-	 * Shallow copy From to Dest
+	 * Retrieve the current follow-on-locking setting.
 	 *
-	 * @param from is copied from
-	 * @param dest is copied to
-	 * @return dest
+	 * @return true if follow-on-locking is enabled
 	 */
-	public static LockOptions copy(LockOptions from, LockOptions dest) {
-		dest.setLockMode(from.getLockMode());
-		dest.setScope(from.getScope());
-		dest.setTimeOut(from.getTimeOut());
-		if ( from.aliasSpecificLockModes != null ) {
-			dest.aliasSpecificLockModes = new HashMap( from.aliasSpecificLockModes );
+	public Boolean getFollowOnLocking() {
+		return followOnLocking;
+	}
+
+	/**
+	 * Set the the follow-on-locking setting.
+	 * @param followOnLocking The new follow-on-locking setting
+	 * @return this (for method chaining).
+	 */
+	public LockOptions setFollowOnLocking(Boolean followOnLocking) {
+		this.followOnLocking = followOnLocking;
+		return this;
+	}
+
+	/**
+	 * Make a copy.
+	 *
+	 * @return The copy
+	 */
+	public LockOptions makeCopy() {
+		final LockOptions copy = new LockOptions();
+		copy( this, copy );
+		return copy;
+	}
+
+	/**
+	 * Perform a shallow copy.
+	 *
+	 * @param source Source for the copy (copied from)
+	 * @param destination Destination for the copy (copied to)
+	 *
+	 * @return destination
+	 */
+	public static LockOptions copy(LockOptions source, LockOptions destination) {
+		destination.setLockMode( source.getLockMode() );
+		destination.setScope( source.getScope() );
+		destination.setTimeOut( source.getTimeOut() );
+		if ( source.aliasSpecificLockModes != null ) {
+			destination.aliasSpecificLockModes = new HashMap<String,LockMode>( source.aliasSpecificLockModes );
 		}
-		return dest;
+		destination.setFollowOnLocking( source.getFollowOnLocking() );
+		return destination;
 	}
 }

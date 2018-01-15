@@ -1,27 +1,11 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2009 by Red Hat Inc and/or its affiliates or by
- * third-party contributors as indicated by either @author tags or express
- * copyright attribution statements applied by the authors.  All
- * third-party contributions are distributed under license by Red Hat Inc.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.engine.jdbc;
+
 import java.io.Serializable;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.InvocationTargetException;
@@ -41,7 +25,7 @@ import org.hibernate.HibernateException;
 public class SerializableClobProxy implements InvocationHandler, Serializable {
 	private static final Class[] PROXY_INTERFACES = new Class[] { Clob.class, WrappedClob.class, Serializable.class };
 
-	private transient final Clob clob;
+	private final transient Clob clob;
 
 	/**
 	 * Builds a serializable {@link java.sql.Clob} wrapper around the given {@link java.sql.Clob}.
@@ -53,6 +37,11 @@ public class SerializableClobProxy implements InvocationHandler, Serializable {
 		this.clob = clob;
 	}
 
+	/**
+	 * Access to the wrapped Clob reference
+	 *
+	 * @return The wrapped Clob reference
+	 */
 	public Clob getWrappedClob() {
 		if ( clob == null ) {
 			throw new IllegalStateException( "Clobs may not be accessed after serialization" );
@@ -62,9 +51,7 @@ public class SerializableClobProxy implements InvocationHandler, Serializable {
 		}
 	}
 
-	/**
-	 * {@inheritDoc}
-	 */
+	@Override
 	public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
 		if ( "getWrappedClob".equals( method.getName() ) ) {
 			return getWrappedClob();
@@ -87,11 +74,7 @@ public class SerializableClobProxy implements InvocationHandler, Serializable {
 	 * @return The generated proxy.
 	 */
 	public static Clob generateProxy(Clob clob) {
-		return ( Clob ) Proxy.newProxyInstance(
-				getProxyClassLoader(),
-				PROXY_INTERFACES,
-				new SerializableClobProxy( clob )
-		);
+		return (Clob) Proxy.newProxyInstance( getProxyClassLoader(), PROXY_INTERFACES, new SerializableClobProxy( clob ) );
 	}
 
 	/**
@@ -101,10 +84,6 @@ public class SerializableClobProxy implements InvocationHandler, Serializable {
 	 * @return The class loader appropriate for proxy construction.
 	 */
 	public static ClassLoader getProxyClassLoader() {
-		ClassLoader cl = Thread.currentThread().getContextClassLoader();
-		if ( cl == null ) {
-			cl = WrappedClob.class.getClassLoader();
-		}
-		return cl;
+		return WrappedClob.class.getClassLoader();
 	}
 }

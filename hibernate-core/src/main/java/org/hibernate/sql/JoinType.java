@@ -1,3 +1,9 @@
+/*
+ * Hibernate, Relational Persistence for Idiomatic Java
+ *
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
+ */
 package org.hibernate.sql;
 
 import org.hibernate.HibernateException;
@@ -22,11 +28,11 @@ public enum JoinType {
 		return joinTypeValue;
 	}
 
-	public static JoinType parse(int joinType){
-		if(joinType<0){
+	public static JoinType parse(int joinType) {
+		if ( joinType < 0 ) {
 			return NONE;
 		}
-		switch ( joinType ){
+		switch ( joinType ) {
 			case 0:
 				return INNER_JOIN;
 			case 1:
@@ -36,7 +42,7 @@ public enum JoinType {
 			case 4:
 				return FULL_JOIN;
 			default:
-				throw new HibernateException( "unknown join type: "+joinType );
+				throw new HibernateException( "unknown join type: " + joinType );
 		}
 	}
 }

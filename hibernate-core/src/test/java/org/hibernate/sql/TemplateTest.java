@@ -1,38 +1,30 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2008-2011, Red Hat Inc. or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Inc.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.sql;
 
 import java.util.Collections;
 
+import org.junit.AfterClass;
+import org.junit.BeforeClass;
 import org.junit.Test;
 
 import org.hibernate.QueryException;
+import org.hibernate.cfg.AvailableSettings;
+import org.hibernate.cfg.Configuration;
 import org.hibernate.dialect.Dialect;
 import org.hibernate.dialect.HSQLDialect;
 import org.hibernate.dialect.function.SQLFunctionRegistry;
+import org.hibernate.engine.spi.SessionFactoryImplementor;
 import org.hibernate.persister.entity.PropertyMapping;
+import org.hibernate.service.ServiceRegistry;
 import org.hibernate.sql.ordering.antlr.ColumnMapper;
+import org.hibernate.sql.ordering.antlr.ColumnReference;
+import org.hibernate.sql.ordering.antlr.SqlValueReference;
+import org.hibernate.testing.ServiceRegistryBuilder;
 import org.hibernate.testing.junit4.BaseUnitTestCase;
 import org.hibernate.type.Type;
 
@@ -76,14 +68,44 @@ public class TemplateTest extends BaseUnitTestCase {
 	};
 
 	private static final ColumnMapper MAPPER = new ColumnMapper() {
-		public String[] map(String reference) {
-			return PROPERTY_MAPPING.toColumns( reference );
+		public SqlValueReference[] map(String reference) {
+			final String[] columnNames = PROPERTY_MAPPING.toColumns( reference );
+			final SqlValueReference[] result = new SqlValueReference[ columnNames.length ];
+			int i = 0;
+			for ( final String columnName : columnNames ) {
+				result[i] = new ColumnReference() {
+					@Override
+					public String getColumnName() {
+						return columnName;
+					}
+				};
+				i++;
+			}
+			return result;
 		}
-	};
+ 	};
 
 	private static final Dialect DIALECT = new HSQLDialect();
 
 	private static final SQLFunctionRegistry FUNCTION_REGISTRY = new SQLFunctionRegistry( DIALECT, Collections.EMPTY_MAP );
+
+	private static SessionFactoryImplementor SESSION_FACTORY = null; // Required for ORDER BY rendering.
+
+	@BeforeClass
+	public static void buildSessionFactory() {
+		Configuration cfg = new Configuration();
+		cfg.setProperty( AvailableSettings.DIALECT, DIALECT.getClass().getName() );
+		ServiceRegistry serviceRegistry = ServiceRegistryBuilder.buildServiceRegistry( cfg.getProperties() );
+		SESSION_FACTORY = (SessionFactoryImplementor) cfg.buildSessionFactory( serviceRegistry );
+	}
+
+	@AfterClass
+	public static void closeSessionFactory() {
+		if ( SESSION_FACTORY != null ) {
+			SESSION_FACTORY.close();
+			SESSION_FACTORY = null;
+		}
+	}
 
 	@Test
 	public void testSqlExtractFunction() {
@@ -229,6 +251,6 @@ public class TemplateTest extends BaseUnitTestCase {
 	}
 
 	public String doStandardRendering(String fragment) {
-		return Template.renderOrderByStringTemplate( fragment, MAPPER, null, DIALECT, FUNCTION_REGISTRY );
+		return Template.renderOrderByStringTemplate( fragment, MAPPER, SESSION_FACTORY, DIALECT, FUNCTION_REGISTRY );
 	}
 }

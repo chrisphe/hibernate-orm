@@ -1,25 +1,8 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2010, Red Hat Inc. or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Inc.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.dialect.function;
 
@@ -30,6 +13,7 @@ import java.util.Map;
 
 import org.hibernate.MappingException;
 import org.hibernate.QueryException;
+import org.hibernate.dialect.Dialect;
 import org.hibernate.engine.spi.Mapping;
 import org.hibernate.engine.spi.SessionFactoryImplementor;
 import org.hibernate.type.StandardBasicTypes;
@@ -45,9 +29,12 @@ public class StandardAnsiSqlAggregationFunctions {
 	 * Definition of a standard ANSI SQL compliant <tt>COUNT</tt> function
 	 */
 	public static class CountFunction extends StandardSQLFunction {
+		/**
+		 * Singleton access
+		 */
 		public static final CountFunction INSTANCE = new CountFunction();
 
-		public CountFunction() {
+		protected CountFunction() {
 			super( "count", StandardBasicTypes.LONG );
 		}
 
@@ -55,42 +42,50 @@ public class StandardAnsiSqlAggregationFunctions {
 		public String render(Type firstArgumentType, List arguments, SessionFactoryImplementor factory) {
 			if ( arguments.size() > 1 ) {
 				if ( "distinct".equalsIgnoreCase( arguments.get( 0 ).toString() ) ) {
-					return renderCountDistinct( arguments );
+					return renderCountDistinct( arguments, factory.getDialect() );
 				}
 			}
 			return super.render( firstArgumentType, arguments, factory );
 		}
 
-		private String renderCountDistinct(List arguments) {
-			StringBuilder buffer = new StringBuilder();
+		private String renderCountDistinct(List arguments, Dialect dialect) {
+			final StringBuilder buffer = new StringBuilder();
 			buffer.append( "count(distinct " );
+			if (dialect.requiresParensForTupleDistinctCounts()) {
+				buffer.append("(");
+			}
 			String sep = "";
-			Iterator itr = arguments.iterator();
-			itr.next(); // intentionally skip first
+			final Iterator itr = arguments.iterator();
+			// intentionally skip first
+			itr.next();
 			while ( itr.hasNext() ) {
-				buffer.append( sep )
-						.append( itr.next() );
+				buffer.append( sep ).append( itr.next() );
 				sep = ", ";
+			}
+			if (dialect.requiresParensForTupleDistinctCounts()) {
+				buffer.append(")");
 			}
 			return buffer.append( ")" ).toString();
 		}
 	}
 
-
 	/**
 	 * Definition of a standard ANSI SQL compliant <tt>AVG</tt> function
 	 */
 	public static class AvgFunction extends StandardSQLFunction {
+		/**
+		 * Singleton access
+		 */
 		public static final AvgFunction INSTANCE = new AvgFunction();
 
-		public AvgFunction() {
+		protected AvgFunction() {
 			super( "avg", StandardBasicTypes.DOUBLE );
 		}
 
 		@Override
 		public String render(Type firstArgumentType, List arguments, SessionFactoryImplementor factory) throws QueryException {
-			int jdbcTypeCode = determineJdbcTypeCode( firstArgumentType, factory );
-			return render( jdbcTypeCode, arguments.get(0).toString(), factory );
+			final int jdbcTypeCode = determineJdbcTypeCode( firstArgumentType, factory );
+			return render( jdbcTypeCode, arguments.get( 0 ).toString(), factory );
 		}
 
 		protected final int determineJdbcTypeCode(Type firstArgumentType, SessionFactoryImplementor factory) throws QueryException {
@@ -106,6 +101,7 @@ public class StandardAnsiSqlAggregationFunctions {
 			}
 		}
 
+		@SuppressWarnings("UnusedParameters")
 		protected String render(int firstArgumentJdbcType, String argument, SessionFactoryImplementor factory) {
 			return "avg(" + renderArgument( argument, firstArgumentJdbcType ) + ")";
 		}
@@ -115,44 +111,49 @@ public class StandardAnsiSqlAggregationFunctions {
 		}
 	}
 
-
+	/**
+	 * Definition of a standard ANSI SQL compliant <tt>MAX</tt> function
+	 */
 	public static class MaxFunction extends StandardSQLFunction {
+		/**
+		 * Singleton access
+		 */
 		public static final MaxFunction INSTANCE = new MaxFunction();
 
-		public MaxFunction() {
+		protected MaxFunction() {
 			super( "max" );
 		}
 	}
 
+	/**
+	 * Definition of a standard ANSI SQL compliant <tt>MIN</tt> function
+	 */
 	public static class MinFunction extends StandardSQLFunction {
+		/**
+		 * Singleton access
+		 */
 		public static final MinFunction INSTANCE = new MinFunction();
 
-		public MinFunction() {
+		protected MinFunction() {
 			super( "min" );
 		}
 	}
 
 
+	/**
+	 * Definition of a standard ANSI SQL compliant <tt>SUM</tt> function
+	 */
 	public static class SumFunction extends StandardSQLFunction {
+		/**
+		 * Singleton access
+		 */
 		public static final SumFunction INSTANCE = new SumFunction();
 
-		public SumFunction() {
+		protected SumFunction() {
 			super( "sum" );
 		}
 
-		protected final int determineJdbcTypeCode(Type type, Mapping mapping) throws QueryException {
-			try {
-				final int[] jdbcTypeCodes = type.sqlTypes( mapping );
-				if ( jdbcTypeCodes.length != 1 ) {
-					throw new QueryException( "multiple-column type in sum()" );
-				}
-				return jdbcTypeCodes[0];
-			}
-			catch ( MappingException me ) {
-				throw new QueryException( me );
-			}
-		}
-
+		@Override
 		public Type getReturnType(Type firstArgumentType, Mapping mapping) {
 			final int jdbcType = determineJdbcTypeCode( firstArgumentType, mapping );
 
@@ -193,13 +194,35 @@ public class StandardAnsiSqlAggregationFunctions {
 			// as a last resort, return the type of the first argument
 			return firstArgumentType;
 		}
+
+		protected final int determineJdbcTypeCode(Type type, Mapping mapping) throws QueryException {
+			try {
+				final int[] jdbcTypeCodes = type.sqlTypes( mapping );
+				if ( jdbcTypeCodes.length != 1 ) {
+					throw new QueryException( "multiple-column type in sum()" );
+				}
+				return jdbcTypeCodes[0];
+			}
+			catch ( MappingException me ) {
+				throw new QueryException( me );
+			}
+		}
+
 	}
 
+	/**
+	 * Push the functions defined on StandardAnsiSqlAggregationFunctions into the given map
+	 *
+	 * @param functionMap The map of functions to push to
+	 */
 	public static void primeFunctionMap(Map<String, SQLFunction> functionMap) {
 		functionMap.put( AvgFunction.INSTANCE.getName(), AvgFunction.INSTANCE );
 		functionMap.put( CountFunction.INSTANCE.getName(), CountFunction.INSTANCE );
 		functionMap.put( MaxFunction.INSTANCE.getName(), MaxFunction.INSTANCE );
 		functionMap.put( MinFunction.INSTANCE.getName(), MinFunction.INSTANCE );
 		functionMap.put( SumFunction.INSTANCE.getName(), SumFunction.INSTANCE );
+	}
+
+	private StandardAnsiSqlAggregationFunctions() {
 	}
 }

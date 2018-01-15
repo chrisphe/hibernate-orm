@@ -7,8 +7,11 @@
 # Build output directies
 /target
 */target
+*/**/target
 /build
 */build
+testdb
+lib
 
 # IntelliJ specific files/directories
 out
@@ -31,3 +34,16 @@ bin
 # Miscellaneous
 *.log
 .clover
+.DS_Store
+
+# JBoss Transactions
+ObjectStore
+
+# Profiler and heap dumps
+*.jps
+*.hprof
+/.nb-gradle/
+
+# Additional databases used in local envs
+databases/mysql/
+databases/postgis/

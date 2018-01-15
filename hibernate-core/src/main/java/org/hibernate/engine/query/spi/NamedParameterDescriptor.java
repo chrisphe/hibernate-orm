@@ -1,30 +1,12 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2008, Red Hat Middleware LLC or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Middleware LLC.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
- *
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.engine.query.spi;
-import java.io.Serializable;
 
+import org.hibernate.Incubating;
 import org.hibernate.type.Type;
 
 /**
@@ -32,36 +14,41 @@ import org.hibernate.type.Type;
  *
  * @author Steve Ebersole
  */
-public class NamedParameterDescriptor implements Serializable {
+@Incubating
+public class NamedParameterDescriptor extends AbstractParameterDescriptor {
 	private final String name;
-	private Type expectedType;
-	private final int[] sourceLocations;
-	private final boolean jpaStyle;
 
-	public NamedParameterDescriptor(String name, Type expectedType, int[] sourceLocations, boolean jpaStyle) {
+	/**
+	 * Constructs a NamedParameterDescriptor
+	 *
+	 * @param name The name of the parameter
+	 * @param expectedType The expected type of the parameter, according to the translator
+	 * @param sourceLocations The locations of the named parameters (aye aye aye)
+	 */
+	public NamedParameterDescriptor(String name, Type expectedType, int[] sourceLocations) {
+		super( sourceLocations, expectedType );
 		this.name = name;
-		this.expectedType = expectedType;
-		this.sourceLocations = sourceLocations;
-		this.jpaStyle = jpaStyle;
 	}
 
 	public String getName() {
 		return name;
 	}
 
-	public Type getExpectedType() {
-		return expectedType;
+	@Override
+	public boolean equals(Object o) {
+		if ( this == o ) {
+			return true;
+		}
+		if ( o == null || getClass() != o.getClass() ) {
+			return false;
+		}
+
+		NamedParameterDescriptor that = (NamedParameterDescriptor) o;
+		return getName().equals( that.getName() );
 	}
 
-	public int[] getSourceLocations() {
-		return sourceLocations;
-	}
-
-	public boolean isJpaStyle() {
-		return jpaStyle;
-	}
-
-	public void resetExpectedType(Type type) {
-		this.expectedType = type;
+	@Override
+	public int hashCode() {
+		return getName().hashCode();
 	}
 }

@@ -1,25 +1,8 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2010, Red Hat Inc. or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Inc.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.type;
 
@@ -31,11 +14,13 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 
+import org.hibernate.Hibernate;
 import org.hibernate.HibernateException;
+import org.hibernate.bytecode.enhance.spi.LazyPropertyInitializer;
 import org.hibernate.collection.internal.PersistentArrayHolder;
 import org.hibernate.collection.spi.PersistentCollection;
 import org.hibernate.engine.spi.SessionFactoryImplementor;
-import org.hibernate.engine.spi.SessionImplementor;
+import org.hibernate.engine.spi.SharedSessionContractImplementor;
 import org.hibernate.persister.collection.CollectionPersister;
 
 /**
@@ -47,17 +32,19 @@ public class ArrayType extends CollectionType {
 	private final Class elementClass;
 	private final Class arrayClass;
 
-	public ArrayType(TypeFactory.TypeScope typeScope, String role, String propertyRef, Class elementClass, boolean isEmbeddedInXML) {
-		super( typeScope, role, propertyRef, isEmbeddedInXML );
+	public ArrayType(TypeFactory.TypeScope typeScope, String role, String propertyRef, Class elementClass) {
+		super( typeScope, role, propertyRef );
 		this.elementClass = elementClass;
 		arrayClass = Array.newInstance(elementClass, 0).getClass();
 	}
 
+	@Override
 	public Class getReturnedClass() {
 		return arrayClass;
 	}
 
-	public PersistentCollection instantiate(SessionImplementor session, CollectionPersister persister, Serializable key)
+	@Override
+	public PersistentCollection instantiate(SharedSessionContractImplementor session, CollectionPersister persister, Serializable key)
 	throws HibernateException {
 		return new PersistentArrayHolder(session, persister);
 	}
@@ -65,18 +52,22 @@ public class ArrayType extends CollectionType {
 	/**
 	 * Not defined for collections of primitive type
 	 */
+	@Override
 	public Iterator getElementsIterator(Object collection) {
 		return Arrays.asList( (Object[]) collection ).iterator();
 	}
 
-	public PersistentCollection wrap(SessionImplementor session, Object array) {
+	@Override
+	public PersistentCollection wrap(SharedSessionContractImplementor session, Object array) {
 		return new PersistentArrayHolder(session, array);
 	}
 
+	@Override
 	public boolean isArrayType() {
 		return true;
 	}
 
+	@Override
 	public String toLoggableString(Object value, SessionFactoryImplementor factory) throws HibernateException {
 		if ( value == null ) {
 			return "null";
@@ -85,22 +76,29 @@ public class ArrayType extends CollectionType {
 		List list = new ArrayList(length);
 		Type elemType = getElementType(factory);
 		for ( int i=0; i<length; i++ ) {
-			list.add( elemType.toLoggableString( Array.get(value, i), factory ) );
+			Object element = Array.get(value, i);
+			if ( element == LazyPropertyInitializer.UNFETCHED_PROPERTY || !Hibernate.isInitialized( element ) ) {
+				list.add( "<uninitialized>" );
+			}
+			else {
+				list.add( elemType.toLoggableString( element, factory ) );
+			}
 		}
 		return list.toString();
 	}
-	
+
+	@Override
 	public Object instantiateResult(Object original) {
 		return Array.newInstance( elementClass, Array.getLength(original) );
 	}
 
+	@Override
 	public Object replaceElements(
 		Object original,
 		Object target,
 		Object owner, 
-		Map copyCache, 
-		SessionImplementor session)
-	throws HibernateException {
+		Map copyCache,
+		SharedSessionContractImplementor session) throws HibernateException {
 		
 		int length = Array.getLength(original);
 		if ( length!=Array.getLength(target) ) {
@@ -117,15 +115,19 @@ public class ArrayType extends CollectionType {
 	
 	}
 
+	@Override
 	public Object instantiate(int anticipatedSize) {
 		throw new UnsupportedOperationException();
 	}
 
+	@Override
 	public Object indexOf(Object array, Object element) {
 		int length = Array.getLength(array);
 		for ( int i=0; i<length; i++ ) {
 			//TODO: proxies!
-			if ( Array.get(array, i)==element ) return i;
+			if ( Array.get(array, i)==element ) {
+				return i;
+			}
 		}
 		return null;
 	}

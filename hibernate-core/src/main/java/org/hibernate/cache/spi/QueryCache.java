@@ -1,34 +1,18 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2008-2011, Red Hat Inc. or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Inc.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.cache.spi;
 
+import java.io.Serializable;
 import java.util.List;
 import java.util.Set;
 
 import org.hibernate.HibernateException;
 import org.hibernate.cache.CacheException;
-import org.hibernate.engine.spi.SessionImplementor;
+import org.hibernate.engine.spi.SharedSessionContractImplementor;
 import org.hibernate.type.Type;
 
 /**
@@ -40,15 +24,63 @@ import org.hibernate.type.Type;
  * @author Gavin King
  */
 public interface QueryCache {
+	/**
+	 * Clear items from the query cache.
+	 *
+	 * @throws CacheException Indicates a problem delegating to the underlying cache.
+	 */
+	void clear() throws CacheException;
 
-	public void clear() throws CacheException;
-	
-	public boolean put(QueryKey key, Type[] returnTypes, List result, boolean isNaturalKeyLookup, SessionImplementor session) throws HibernateException;
+	/**
+	 * Put a result into the query cache.
+	 *
+	 * @param key The cache key
+	 * @param returnTypes The result types
+	 * @param result The results to cache
+	 * @param isNaturalKeyLookup Was this a natural id lookup?
+	 * @param session The originating session
+	 *
+	 * @return Whether the put actually happened.
+	 *
+	 * @throws HibernateException Indicates a problem delegating to the underlying cache.
+	 */
+	boolean put(
+			QueryKey key,
+			Type[] returnTypes,
+			List result,
+			boolean isNaturalKeyLookup,
+			SharedSessionContractImplementor session) throws HibernateException;
 
-	public List get(QueryKey key, Type[] returnTypes, boolean isNaturalKeyLookup, Set spaces, SessionImplementor session) throws HibernateException;
+	/**
+	 * Get results from the cache.
+	 *
+	 * @param key The cache key
+	 * @param returnTypes The result types
+	 * @param isNaturalKeyLookup Was this a natural id lookup?
+	 * @param spaces The query spaces (used in invalidation plus validation checks)
+	 * @param session The originating session
+	 *
+	 * @return The cached results; may be null.
+	 *
+	 * @throws HibernateException Indicates a problem delegating to the underlying cache.
+	 */
+	List get(
+			QueryKey key,
+			Type[] returnTypes,
+			boolean isNaturalKeyLookup,
+			Set<Serializable> spaces,
+			SharedSessionContractImplementor session) throws HibernateException;
 
-	public void destroy();
+	/**
+	 * Destroy the cache.
+	 */
+	void destroy();
 
-	public QueryResultsRegion getRegion();
+	/**
+	 * The underlying cache factory region being used.
+	 *
+	 * @return The cache region.
+	 */
+	QueryResultsRegion getRegion();
 
 }

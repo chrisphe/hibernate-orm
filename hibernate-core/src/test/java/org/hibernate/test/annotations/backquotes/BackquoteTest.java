@@ -1,3 +1,10 @@
+/*
+ * Hibernate, Relational Persistence for Idiomatic Java
+ *
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
+ */
+
 //$Id$
 package org.hibernate.test.annotations.backquotes;
 
@@ -28,7 +35,6 @@ import static org.junit.Assert.fail;
  *
  */
 public class BackquoteTest extends BaseUnitTestCase {
-	private static final Logger log = Logger.getLogger( BackquoteTest.class );
 
 	private ServiceRegistry serviceRegistry;
     private SessionFactory sessionFactory;
@@ -59,6 +65,12 @@ public class BackquoteTest extends BaseUnitTestCase {
             log.debug(writer.toString());
 			fail(e.getMessage());
 		}
+		finally {
+			if ( sessionFactory != null ) {
+				sessionFactory.close();
+				sessionFactory = null;
+			}
+		}
 	}
 
 	/**
@@ -87,6 +99,11 @@ public class BackquoteTest extends BaseUnitTestCase {
 			e.printStackTrace(new PrintWriter(writer));
             log.debug(writer.toString());
         	fail(e.getMessage());
-        }
+        } finally {
+			if(sessionFactory!=null){
+				sessionFactory.close();
+				sessionFactory = null;
+			}
+		}
 	}
 }

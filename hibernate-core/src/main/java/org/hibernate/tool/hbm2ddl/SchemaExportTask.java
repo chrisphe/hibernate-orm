@@ -1,49 +1,39 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2008, Red Hat Middleware LLC or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Middleware LLC.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
- *
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.tool.hbm2ddl;
 
 import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
-import java.io.IOException;
-import java.util.Iterator;
+import java.io.OutputStreamWriter;
 import java.util.LinkedList;
 import java.util.List;
-import java.util.Properties;
+
+import org.hibernate.boot.MetadataBuilder;
+import org.hibernate.boot.MetadataSources;
+import org.hibernate.boot.model.naming.ImplicitNamingStrategy;
+import org.hibernate.boot.model.naming.PhysicalNamingStrategy;
+import org.hibernate.boot.registry.BootstrapServiceRegistry;
+import org.hibernate.boot.registry.BootstrapServiceRegistryBuilder;
+import org.hibernate.boot.registry.StandardServiceRegistryBuilder;
+import org.hibernate.boot.registry.classloading.spi.ClassLoaderService;
+import org.hibernate.boot.registry.internal.StandardServiceRegistryImpl;
+import org.hibernate.boot.spi.MetadataImplementor;
+import org.hibernate.cfg.AvailableSettings;
+import org.hibernate.engine.config.spi.ConfigurationService;
+import org.hibernate.internal.log.DeprecationLogger;
+import org.hibernate.internal.util.collections.ArrayHelper;
+import org.hibernate.tool.schema.Action;
+import org.hibernate.tool.schema.spi.DelayedDropRegistryNotAvailableImpl;
+import org.hibernate.tool.schema.spi.SchemaManagementToolCoordinator;
 
 import org.apache.tools.ant.BuildException;
 import org.apache.tools.ant.DirectoryScanner;
 import org.apache.tools.ant.Project;
 import org.apache.tools.ant.taskdefs.MatchingTask;
 import org.apache.tools.ant.types.FileSet;
-
-import org.hibernate.HibernateException;
-import org.hibernate.cfg.Configuration;
-import org.hibernate.cfg.NamingStrategy;
-import org.hibernate.internal.util.ReflectHelper;
-import org.hibernate.internal.util.collections.ArrayHelper;
 
 /**
  * An Ant task for <tt>SchemaExport</tt>.
@@ -66,23 +56,23 @@ import org.hibernate.internal.util.collections.ArrayHelper;
  * &lt;/schemaexport&gt;
  * </pre>
  *
- * @see SchemaExport
  * @author Rong C Ou
  */
 public class SchemaExportTask extends MatchingTask {
+	private List<FileSet> fileSets = new LinkedList<FileSet>();
+	private File propertiesFile;
+	private File configurationFile;
+	private File outputFile;
+	private boolean quiet;
+	private boolean text;
+	private boolean drop;
+	private boolean create;
+	private boolean haltOnError;
+	private String delimiter;
+	private String implicitNamingStrategy;
+	private String physicalNamingStrategy;
 
-	private List fileSets = new LinkedList();
-	private File propertiesFile = null;
-	private File configurationFile = null;
-	private File outputFile = null;
-	private boolean quiet = false;
-	private boolean text = false;
-	private boolean drop = false;
-	private boolean create = false;
-	private boolean haltOnError = false;
-	private String delimiter = null;
-	private String namingStrategy = null;
-
+	@SuppressWarnings("UnusedDeclaration")
 	public void addFileset(FileSet set) {
 		fileSets.add(set);
 	}
@@ -114,6 +104,7 @@ public class SchemaExportTask extends MatchingTask {
 	 * written to standard out.
 	 * @param quiet true to enable quiet mode
 	 */
+	@SuppressWarnings("UnusedDeclaration")
 	public void setQuiet(boolean quiet) {
 		this.quiet = quiet;
 	}
@@ -149,6 +140,7 @@ public class SchemaExportTask extends MatchingTask {
 	 * Set the end of statement delimiter for the generated script
 	 * @param delimiter the delimiter
 	 */
+	@SuppressWarnings("UnusedDeclaration")
 	public void setDelimiter(String delimiter) {
 		this.delimiter = delimiter;
 	}
@@ -162,40 +154,134 @@ public class SchemaExportTask extends MatchingTask {
 	}
 
 	/**
+	 * @deprecated Use {@link #setImplicitNamingStrategy} or {@link #setPhysicalNamingStrategy}
+	 * instead
+	 */
+	@Deprecated
+	public void setNamingStrategy(String namingStrategy) {
+		DeprecationLogger.DEPRECATION_LOGGER.logDeprecatedNamingStrategyAntArgument();
+	}
+
+	@SuppressWarnings("UnusedDeclaration")
+	public void setImplicitNamingStrategy(String implicitNamingStrategy) {
+		this.implicitNamingStrategy = implicitNamingStrategy;
+	}
+
+	@SuppressWarnings("UnusedDeclaration")
+	public void setPhysicalNamingStrategy(String physicalNamingStrategy) {
+		this.physicalNamingStrategy = physicalNamingStrategy;
+	}
+
+	@SuppressWarnings("UnusedDeclaration")
+	public void setHaltonerror(boolean haltOnError) {
+		this.haltOnError = haltOnError;
+	}
+
+	/**
 	 * Execute the task
 	 */
 	@Override
-    public void execute() throws BuildException {
+	public void execute() throws BuildException {
 		try {
-			getSchemaExport( getConfiguration() ).execute(!quiet, !text, drop, create);
+			doExecution();
 		}
-		catch (HibernateException e) {
-			throw new BuildException("Schema text failed: " + e.getMessage(), e);
-		}
-		catch (FileNotFoundException e) {
-			throw new BuildException("File not found: " + e.getMessage(), e);
-		}
-		catch (IOException e) {
-			throw new BuildException("IOException : " + e.getMessage(), e);
+		catch (BuildException e) {
+			throw e;
 		}
 		catch (Exception e) {
-			throw new BuildException(e);
+			throw new BuildException( "Error performing export : " + e.getMessage(), e );
 		}
 	}
 
+	private void doExecution() throws Exception {
+		final BootstrapServiceRegistry bsr = new BootstrapServiceRegistryBuilder().build();
+		final StandardServiceRegistryBuilder ssrBuilder = new StandardServiceRegistryBuilder( bsr );
+
+		final MetadataSources metadataSources = new MetadataSources( bsr );
+
+		if ( configurationFile != null ) {
+			ssrBuilder.configure( configurationFile );
+		}
+		if ( propertiesFile != null ) {
+			ssrBuilder.loadProperties( propertiesFile );
+		}
+		ssrBuilder.applySettings( getProject().getProperties() );
+
+		for ( String fileName : getFiles() ) {
+			if ( fileName.endsWith(".jar") ) {
+				metadataSources.addJar( new File( fileName ) );
+			}
+			else {
+				metadataSources.addFile( fileName );
+			}
+		}
+
+		ssrBuilder.applySetting( AvailableSettings.HBM2DDL_DELIMITER, delimiter );
+
+		ExportType exportType = ExportType.interpret( drop, create );
+		Target output = Target.interpret( !quiet, !text );
+
+		if ( output.doScript() ) {
+			ssrBuilder.applySetting( AvailableSettings.HBM2DDL_SCRIPTS_ACTION, exportType.getAction() );
+
+			final Object scriptTarget;
+			if ( outputFile == null ) {
+				scriptTarget = new OutputStreamWriter( System.out );
+			}
+			else {
+				scriptTarget = outputFile;
+			}
+
+			if ( exportType.doCreate() ) {
+				ssrBuilder.applySetting( AvailableSettings.HBM2DDL_SCRIPTS_CREATE_TARGET, scriptTarget );
+			}
+			if ( exportType.doDrop() ) {
+				ssrBuilder.applySetting( AvailableSettings.HBM2DDL_SCRIPTS_DROP_TARGET, scriptTarget );
+			}
+		}
+
+		if ( output.doExport() ) {
+			ssrBuilder.applySetting( AvailableSettings.HBM2DDL_DATABASE_ACTION, exportType.getAction() );
+		}
+
+
+		final StandardServiceRegistryImpl ssr = (StandardServiceRegistryImpl) ssrBuilder.build();
+
+
+		final MetadataBuilder metadataBuilder = metadataSources.getMetadataBuilder( ssr );
+
+		ClassLoaderService classLoaderService = bsr.getService( ClassLoaderService.class );
+		if ( implicitNamingStrategy != null ) {
+			metadataBuilder.applyImplicitNamingStrategy(
+					(ImplicitNamingStrategy) classLoaderService.classForName( implicitNamingStrategy ).newInstance()
+			);
+		}
+		if ( physicalNamingStrategy != null ) {
+			metadataBuilder.applyPhysicalNamingStrategy(
+					(PhysicalNamingStrategy) classLoaderService.classForName( physicalNamingStrategy ).newInstance()
+			);
+		}
+
+		final MetadataImplementor metadata = (MetadataImplementor) metadataBuilder.build();
+		metadata.validate();
+
+		SchemaManagementToolCoordinator.process(
+				metadata,
+				ssr,
+				ssr.getService( ConfigurationService.class ).getSettings(),
+				DelayedDropRegistryNotAvailableImpl.INSTANCE
+		);
+	}
+
 	private String[] getFiles() {
-
-		List files = new LinkedList();
-		for ( Iterator i = fileSets.iterator(); i.hasNext(); ) {
-
-			FileSet fs = (FileSet) i.next();
-			DirectoryScanner ds = fs.getDirectoryScanner( getProject() );
-
-			String[] dsFiles = ds.getIncludedFiles();
-			for (int j = 0; j < dsFiles.length; j++) {
-				File f = new File(dsFiles[j]);
+		List<String> files = new LinkedList<String>();
+		for ( FileSet fileSet : fileSets ) {
+			final DirectoryScanner ds = fileSet.getDirectoryScanner( getProject() );
+			final String[] dsFiles = ds.getIncludedFiles();
+			for ( String dsFileName : dsFiles ) {
+				File f = new File( dsFileName );
 				if ( !f.isFile() ) {
-					f = new File( ds.getBasedir(), dsFiles[j] );
+					f = new File( ds.getBasedir(), dsFileName );
 				}
 
 				files.add( f.getAbsolutePath() );
@@ -205,52 +291,41 @@ public class SchemaExportTask extends MatchingTask {
 		return ArrayHelper.toStringArray(files);
 	}
 
-	private Configuration getConfiguration() throws Exception {
-		Configuration cfg = new Configuration();
-		if (namingStrategy!=null) {
-			cfg.setNamingStrategy(
-					(NamingStrategy) ReflectHelper.classForName(namingStrategy).newInstance()
-				);
-		}
-		if (configurationFile != null) {
-			cfg.configure( configurationFile );
+	public enum ExportType {
+		CREATE( Action.CREATE_ONLY ),
+		DROP( Action.DROP ),
+		NONE( Action.NONE ),
+		BOTH( Action.CREATE );
+
+		private final Action action;
+
+		ExportType(Action action) {
+			this.action = action;
 		}
 
-		String[] files = getFiles();
-		for (int i = 0; i < files.length; i++) {
-			String filename = files[i];
-			if ( filename.endsWith(".jar") ) {
-				cfg.addJar( new File(filename) );
+		public boolean doCreate() {
+			return this == BOTH || this == CREATE;
+		}
+
+		public boolean doDrop() {
+			return this == BOTH || this == DROP;
+		}
+
+		public Action getAction() {
+			return action;
+		}
+
+		public static ExportType interpret(boolean justDrop, boolean justCreate) {
+			if ( justDrop ) {
+				return ExportType.DROP;
+			}
+			else if ( justCreate ) {
+				return ExportType.CREATE;
 			}
 			else {
-				cfg.addFile(filename);
+				return ExportType.BOTH;
 			}
 		}
-		return cfg;
-	}
-
-	private SchemaExport getSchemaExport(Configuration cfg) throws HibernateException, IOException {
-		Properties properties = new Properties();
-		properties.putAll( cfg.getProperties() );
-		if (propertiesFile == null) {
-			properties.putAll( getProject().getProperties() );
-		}
-		else {
-			properties.load( new FileInputStream(propertiesFile) );
-		}
-		cfg.setProperties(properties);
-		return new SchemaExport(cfg)
-				.setHaltOnError(haltOnError)
-				.setOutputFile( outputFile.getPath() )
-				.setDelimiter(delimiter);
-	}
-
-	public void setNamingStrategy(String namingStrategy) {
-		this.namingStrategy = namingStrategy;
-	}
-
-	public void setHaltonerror(boolean haltOnError) {
-		this.haltOnError = haltOnError;
 	}
 
 }

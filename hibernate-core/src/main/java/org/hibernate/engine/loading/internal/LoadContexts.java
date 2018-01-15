@@ -1,25 +1,8 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2008-2011, Red Hat Inc. or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Inc.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.engine.loading.internal;
 
@@ -30,23 +13,17 @@ import java.util.IdentityHashMap;
 import java.util.Map;
 import java.util.Set;
 
-import org.jboss.logging.Logger;
-
 import org.hibernate.collection.spi.PersistentCollection;
 import org.hibernate.engine.spi.CollectionKey;
 import org.hibernate.engine.spi.PersistenceContext;
-import org.hibernate.engine.spi.SessionImplementor;
+import org.hibernate.engine.spi.SharedSessionContractImplementor;
+import org.hibernate.internal.CoreLogging;
 import org.hibernate.internal.CoreMessageLogger;
-import org.hibernate.internal.util.collections.IdentityMap;
 import org.hibernate.persister.collection.CollectionPersister;
 import org.hibernate.pretty.MessageHelper;
 
 /**
  * Maps {@link ResultSet result-sets} to specific contextual data related to processing that result set
- * <p/>
- * Implementation note: internally an {@link IdentityMap} is used to maintain the mappings mainly because I'd
- * rather not be dependent upon potentially bad {@link Object#equals} and {@link Object#hashCode} implementations on
- * the JDBC result sets
  * <p/>
  * Considering the JDBC-redesign work, would further like this contextual info not mapped separately, but available
  * based on the result set being processed.  This would also allow maintaining a single mapping as we could reliably
@@ -55,8 +32,7 @@ import org.hibernate.pretty.MessageHelper;
  * @author Steve Ebersole
  */
 public class LoadContexts {
-
-    private static final CoreMessageLogger LOG = Logger.getMessageLogger(CoreMessageLogger.class, LoadContexts.class.getName());
+	private static final CoreMessageLogger LOG = CoreLogging.messageLogger( LoadContexts.class );
 
 	private final PersistenceContext persistenceContext;
 	private Map<ResultSet,CollectionLoadContext> collectionLoadContexts;
@@ -83,7 +59,7 @@ public class LoadContexts {
 		return persistenceContext;
 	}
 
-	private SessionImplementor getSession() {
+	private SharedSessionContractImplementor getSession() {
 		return getPersistenceContext().getSession();
 	}
 
@@ -101,11 +77,11 @@ public class LoadContexts {
 	 */
 	public void cleanup(ResultSet resultSet) {
 		if ( collectionLoadContexts != null ) {
-			CollectionLoadContext collectionLoadContext = collectionLoadContexts.remove( resultSet );
+			final CollectionLoadContext collectionLoadContext = collectionLoadContexts.remove( resultSet );
 			collectionLoadContext.cleanup();
 		}
 		if ( entityLoadContexts != null ) {
-			EntityLoadContext entityLoadContext = entityLoadContexts.remove( resultSet );
+			final EntityLoadContext entityLoadContext = entityLoadContexts.remove( resultSet );
 			entityLoadContext.cleanup();
 		}
 	}
@@ -191,7 +167,7 @@ public class LoadContexts {
 	 * @return The loading collection, or null if not found.
 	 */
 	public PersistentCollection locateLoadingCollection(CollectionPersister persister, Serializable ownerKey) {
-		LoadingCollectionEntry lce = locateLoadingCollectionEntry( new CollectionKey( persister, ownerKey ) );
+		final LoadingCollectionEntry lce = locateLoadingCollectionEntry( new CollectionKey( persister, ownerKey ) );
 		if ( lce != null ) {
 			if ( LOG.isTraceEnabled() ) {
 				LOG.tracef(
@@ -200,11 +176,6 @@ public class LoadContexts {
 				);
 			}
 			return lce.getCollection();
-		}
-		// TODO : should really move this log statement to CollectionType, where this is used from...
-		if ( LOG.isTraceEnabled() ) {
-			LOG.tracef( "Creating collection wrapper: %s",
-					MessageHelper.collectionInfoString( persister, ownerKey, getSession().getFactory() ) );
 		}
 		return null;
 	}
@@ -251,13 +222,13 @@ public class LoadContexts {
 		if ( !hasRegisteredLoadingCollectionEntries() ) {
 			return;
 		}
-		xrefLoadingCollectionEntries.remove(key);
-	 }
+		xrefLoadingCollectionEntries.remove( key );
+	}
 
 	@SuppressWarnings( {"UnusedDeclaration"})
 	Map getLoadingCollectionXRefs() {
- 		return xrefLoadingCollectionEntries;
- 	}
+		return xrefLoadingCollectionEntries;
+	}
 
 
 	/**
@@ -276,7 +247,7 @@ public class LoadContexts {
 			return null;
 		}
 		LOG.tracev( "Attempting to locate loading collection entry [{0}] in any result-set context", key );
-		LoadingCollectionEntry rtn = xrefLoadingCollectionEntries.get( key );
+		final LoadingCollectionEntry rtn = xrefLoadingCollectionEntries.get( key );
 		if ( rtn == null ) {
 			LOG.tracev( "Collection [{0}] not located in load context", key );
 		}
@@ -296,6 +267,13 @@ public class LoadContexts {
 	// Entity load contexts ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 	// 	* currently, not yet used...
 
+	/**
+	 * Currently unused
+	 *
+	 * @param resultSet The result set
+	 *
+	 * @return The entity load context
+	 */
 	@SuppressWarnings( {"UnusedDeclaration"})
 	public EntityLoadContext getEntityLoadContext(ResultSet resultSet) {
 		EntityLoadContext context = null;

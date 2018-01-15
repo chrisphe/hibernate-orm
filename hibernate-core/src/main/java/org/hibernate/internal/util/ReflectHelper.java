@@ -1,41 +1,30 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2008, Red Hat Middleware LLC or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Middleware LLC.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
- *
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.internal.util;
 
+import java.beans.Introspector;
+import java.lang.reflect.AccessibleObject;
 import java.lang.reflect.Constructor;
+import java.lang.reflect.Field;
 import java.lang.reflect.Member;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
+import java.util.Locale;
+import java.util.regex.Pattern;
+import javax.persistence.Transient;
 
 import org.hibernate.AssertionFailure;
 import org.hibernate.MappingException;
 import org.hibernate.PropertyNotFoundException;
-import org.hibernate.property.BasicPropertyAccessor;
-import org.hibernate.property.DirectPropertyAccessor;
-import org.hibernate.property.Getter;
-import org.hibernate.property.PropertyAccessor;
+import org.hibernate.boot.registry.classloading.spi.ClassLoaderService;
+import org.hibernate.boot.registry.classloading.spi.ClassLoadingException;
+import org.hibernate.engine.spi.SessionFactoryImplementor;
+import org.hibernate.property.access.internal.PropertyAccessStrategyMixedImpl;
+import org.hibernate.property.access.spi.Getter;
 import org.hibernate.type.PrimitiveType;
 import org.hibernate.type.Type;
 
@@ -44,12 +33,13 @@ import org.hibernate.type.Type;
  *
  * @author Gavin King
  * @author Steve Ebersole
+ * @author Chris Cranford
  */
+@SuppressWarnings("unchecked")
 public final class ReflectHelper {
 
-	//TODO: this dependency is kinda Bad
-	private static final PropertyAccessor BASIC_PROPERTY_ACCESSOR = new BasicPropertyAccessor();
-	private static final PropertyAccessor DIRECT_PROPERTY_ACCESSOR = new DirectPropertyAccessor();
+	private static final Pattern JAVA_CONSTANT_PATTERN = Pattern.compile(
+			"[a-z\\d]+\\.([A-Z]{1}[a-z\\d]+)+\\$?([A-Z]{1}[a-z\\d]+)*\\.[A-Z_\\$]+", Pattern.UNICODE_CHARACTER_CLASS);
 
 	public static final Class[] NO_PARAM_SIGNATURE = new Class[0];
 	public static final Object[] NO_PARAMS = new Object[0];
@@ -160,9 +150,9 @@ public final class ReflectHelper {
 	 */
 	public static Class classForName(String name, Class caller) throws ClassNotFoundException {
 		try {
-			ClassLoader contextClassLoader = Thread.currentThread().getContextClassLoader();
-			if ( contextClassLoader != null ) {
-				return contextClassLoader.loadClass( name );
+			ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
+			if ( classLoader != null ) {
+				return classLoader.loadClass( name );
 			}
 		}
 		catch ( Throwable ignore ) {
@@ -178,30 +168,23 @@ public final class ReflectHelper {
 	 *
 	 * @param name The class name
 	 * @return The class reference.
+	 *
 	 * @throws ClassNotFoundException From {@link Class#forName(String)}.
+	 *
+	 * @deprecated Depending on context, either {@link org.hibernate.boot.registry.classloading.spi.ClassLoaderService}
+	 * or {@link org.hibernate.boot.spi.ClassLoaderAccess} should be preferred
 	 */
+	@Deprecated
 	public static Class classForName(String name) throws ClassNotFoundException {
 		try {
-			ClassLoader contextClassLoader = Thread.currentThread().getContextClassLoader();
-			if ( contextClassLoader != null ) {
-				return contextClassLoader.loadClass(name);
+			ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
+			if ( classLoader != null ) {
+				return classLoader.loadClass(name);
 			}
 		}
 		catch ( Throwable ignore ) {
 		}
 		return Class.forName( name );
-	}
-
-	/**
-	 * Is this member publicly accessible.
-	 * <p/>
-	 * Short-hand for {@link #isPublic(Class, Member)} passing the member + {@link Member#getDeclaringClass()}
-	 *
-	 * @param member The member to check
-	 * @return True if the member is publicly accessible.
-	 */
-	public static boolean isPublic(Member member) {
-		return isPublic( member.getDeclaringClass(), member );
 	}
 
 	/**
@@ -220,16 +203,22 @@ public final class ReflectHelper {
 	 *
 	 * @param className The name of the class owning the property.
 	 * @param name The name of the property.
+	 * @param classLoaderService ClassLoader services
+	 *
 	 * @return The type of the property.
+	 *
 	 * @throws MappingException Indicates we were unable to locate the property.
 	 */
-	public static Class reflectedPropertyClass(String className, String name) throws MappingException {
+	public static Class reflectedPropertyClass(
+			String className,
+			String name,
+			ClassLoaderService classLoaderService) throws MappingException {
 		try {
-			Class clazz = ReflectHelper.classForName( className );
+			Class clazz = classLoaderService.classForName( className );
 			return getter( clazz, name ).getReturnType();
 		}
-		catch ( ClassNotFoundException cnfe ) {
-			throw new MappingException( "class " + className + " not found while looking for property: " + name, cnfe );
+		catch ( ClassLoadingException e ) {
+			throw new MappingException( "class " + className + " not found while looking for property: " + name, e );
 		}
 	}
 
@@ -246,36 +235,19 @@ public final class ReflectHelper {
 	}
 
 	private static Getter getter(Class clazz, String name) throws MappingException {
-		try {
-			return BASIC_PROPERTY_ACCESSOR.getGetter( clazz, name );
-		}
-		catch ( PropertyNotFoundException pnfe ) {
-			return DIRECT_PROPERTY_ACCESSOR.getGetter( clazz, name );
-		}
+		return PropertyAccessStrategyMixedImpl.INSTANCE.buildPropertyAccess( clazz, name ).getGetter();
 	}
 
-	/**
-	 * Directly retrieve the {@link Getter} reference via the {@link BasicPropertyAccessor}.
-	 *
-	 * @param theClass The class owning the property
-	 * @param name The name of the property
-	 * @return The getter.
-	 * @throws MappingException Indicates we were unable to locate the property.
-	 */
-	public static Getter getGetter(Class theClass, String name) throws MappingException {
-		return BASIC_PROPERTY_ACCESSOR.getGetter( theClass, name );
-	}
-
-	/**
-	 * Resolve a constant to its actual value.
-	 *
-	 * @param name The name
-	 * @return The value
-	 */
-	public static Object getConstantValue(String name) {
+	public static Object getConstantValue(String name, SessionFactoryImplementor factory) {
+		boolean conventionalJavaConstants = factory.getSessionFactoryOptions().isConventionalJavaConstants();
 		Class clazz;
 		try {
-			clazz = classForName( StringHelper.qualifier( name ) );
+			if ( conventionalJavaConstants &&
+				!JAVA_CONSTANT_PATTERN.matcher( name ).find() ) {
+				return null;
+			}
+			ClassLoaderService classLoaderService = factory.getServiceRegistry().getService( ClassLoaderService.class );
+			clazz = classLoaderService.classForName( StringHelper.qualifier( name ) );
 		}
 		catch ( Throwable t ) {
 			return null;
@@ -295,16 +267,14 @@ public final class ReflectHelper {
 	 * @return The default constructor.
 	 * @throws PropertyNotFoundException Indicates there was not publicly accessible, no-arg constructor (todo : why PropertyNotFoundException???)
 	 */
-	public static Constructor getDefaultConstructor(Class clazz) throws PropertyNotFoundException {
+	public static <T> Constructor<T> getDefaultConstructor(Class<T> clazz) throws PropertyNotFoundException {
 		if ( isAbstractClass( clazz ) ) {
 			return null;
 		}
 
 		try {
-			Constructor constructor = clazz.getDeclaredConstructor( NO_PARAM_SIGNATURE );
-			if ( !isPublic( clazz, constructor ) ) {
-				constructor.setAccessible( true );
-			}
+			Constructor<T> constructor = clazz.getDeclaredConstructor( NO_PARAM_SIGNATURE );
+			ensureAccessibility( constructor );
 			return constructor;
 		}
 		catch ( NoSuchMethodException nme ) {
@@ -346,15 +316,16 @@ public final class ReflectHelper {
 	 */
 	public static Constructor getConstructor(Class clazz, Type[] types) throws PropertyNotFoundException {
 		final Constructor[] candidates = clazz.getConstructors();
-		for ( int i = 0; i < candidates.length; i++ ) {
-			final Constructor constructor = candidates[i];
-			final Class[] params = constructor.getParameterTypes();
+		Constructor constructor = null;
+		int numberOfMatchingConstructors = 0;
+		for ( final Constructor candidate : candidates ) {
+			final Class[] params = candidate.getParameterTypes();
 			if ( params.length == types.length ) {
 				boolean found = true;
 				for ( int j = 0; j < params.length; j++ ) {
-					final boolean ok = params[j].isAssignableFrom( types[j].getReturnedClass() ) || (
+					final boolean ok = types[j] == null || params[j].isAssignableFrom( types[j].getReturnedClass() ) || (
 							types[j] instanceof PrimitiveType &&
-									params[j] == ( ( PrimitiveType ) types[j] ).getPrimitiveClass()
+									params[j] == ( (PrimitiveType) types[j] ).getPrimitiveClass()
 					);
 					if ( !ok ) {
 						found = false;
@@ -362,16 +333,20 @@ public final class ReflectHelper {
 					}
 				}
 				if ( found ) {
-					if ( !isPublic( clazz, constructor ) ) {
-						constructor.setAccessible( true );
-					}
-					return constructor;
+					numberOfMatchingConstructors ++;
+					ensureAccessibility( candidate );
+					constructor = candidate;
 				}
 			}
 		}
+
+		if ( numberOfMatchingConstructors == 1 ) {
+			return constructor;
+		}
 		throw new PropertyNotFoundException( "no appropriate constructor in class: " + clazz.getName() );
+
 	}
-	
+
 	public static Method getMethod(Class clazz, Method method) {
 		try {
 			return clazz.getMethod( method.getName(), method.getParameterTypes() );
@@ -381,4 +356,342 @@ public final class ReflectHelper {
 		}
 	}
 
+	public static Field findField(Class containerClass, String propertyName) {
+		if ( containerClass == null ) {
+			throw new IllegalArgumentException( "Class on which to find field [" + propertyName + "] cannot be null" );
+		}
+		else if ( containerClass == Object.class ) {
+			throw new IllegalArgumentException( "Illegal attempt to locate field [" + propertyName + "] on Object.class" );
+		}
+
+		Field field = locateField( containerClass, propertyName );
+
+		if ( field == null ) {
+			throw new PropertyNotFoundException(
+					String.format(
+							Locale.ROOT,
+							"Could not locate field name [%s] on class [%s]",
+							propertyName,
+							containerClass.getName()
+					)
+			);
+		}
+
+		ensureAccessibility( field );
+
+		return field;
+	}
+
+	public static void ensureAccessibility(AccessibleObject accessibleObject) {
+		if ( accessibleObject.isAccessible() ) {
+			return;
+		}
+
+		accessibleObject.setAccessible( true );
+	}
+
+	private static Field locateField(Class clazz, String propertyName) {
+		if ( clazz == null || Object.class.equals( clazz ) ) {
+			return null;
+		}
+
+		try {
+			return clazz.getDeclaredField( propertyName );
+		}
+		catch ( NoSuchFieldException nsfe ) {
+			return locateField( clazz.getSuperclass(), propertyName );
+		}
+	}
+
+	public static Method findGetterMethod(Class containerClass, String propertyName) {
+		Class checkClass = containerClass;
+		Method getter = null;
+
+		// check containerClass, and then its super types (if any)
+		while ( getter == null && checkClass != null ) {
+			if ( checkClass.equals( Object.class ) ) {
+				break;
+			}
+
+			getter = getGetterOrNull( checkClass, propertyName );
+			checkClass = checkClass.getSuperclass();
+		}
+
+		// if no getter found yet, check all implemented interfaces
+		if ( getter == null ) {
+			getter = getGetterOrNull( containerClass.getInterfaces(), propertyName );
+		}
+
+		if ( getter == null ) {
+			throw new PropertyNotFoundException(
+					String.format(
+							Locale.ROOT,
+							"Could not locate getter method for property [%s#%s]",
+							containerClass.getName(),
+							propertyName
+					)
+			);
+		}
+
+		ensureAccessibility( getter );
+
+		return getter;
+	}
+
+	private static Method getGetterOrNull(Class[] interfaces, String propertyName) {
+		Method getter = null;
+		for ( int i = 0; getter == null && i < interfaces.length; ++i ) {
+			final Class anInterface = interfaces[i];
+			getter = getGetterOrNull( anInterface, propertyName );
+			if ( getter == null ) {
+				// if no getter found yet, check all implemented interfaces of interface
+				getter = getGetterOrNull( anInterface.getInterfaces(), propertyName );
+			}
+		}
+		return getter;
+	}
+
+	private static Method getGetterOrNull(Class containerClass, String propertyName) {
+		for ( Method method : containerClass.getDeclaredMethods() ) {
+			// if the method has parameters, skip it
+			if ( method.getParameterCount() != 0 ) {
+				continue;
+			}
+
+			// if the method is a "bridge", skip it
+			if ( method.isBridge() ) {
+				continue;
+			}
+
+			if ( method.getAnnotation( Transient.class ) != null ) {
+				continue;
+			}
+
+			if ( Modifier.isStatic( method.getModifiers() ) ) {
+				continue;
+			}
+
+			final String methodName = method.getName();
+
+			// try "get"
+			if ( methodName.startsWith( "get" ) ) {
+				final String stemName = methodName.substring( 3 );
+				final String decapitalizedStemName = Introspector.decapitalize( stemName );
+				if ( stemName.equals( propertyName ) || decapitalizedStemName.equals( propertyName ) ) {
+					verifyNoIsVariantExists( containerClass, propertyName, method, stemName );
+					return method;
+				}
+
+			}
+
+			// if not "get", then try "is"
+			if ( methodName.startsWith( "is" ) ) {
+				final String stemName = methodName.substring( 2 );
+				String decapitalizedStemName = Introspector.decapitalize( stemName );
+				if ( stemName.equals( propertyName ) || decapitalizedStemName.equals( propertyName ) ) {
+					verifyNoGetVariantExists( containerClass, propertyName, method, stemName );
+					return method;
+				}
+			}
+		}
+
+		return null;
+	}
+
+	private static void verifyNoIsVariantExists(
+			Class containerClass,
+			String propertyName,
+			Method getMethod,
+			String stemName) {
+		// verify that the Class does not also define a method with the same stem name with 'is'
+		try {
+			final Method isMethod = containerClass.getDeclaredMethod( "is" + stemName );
+			if ( !Modifier.isStatic( isMethod.getModifiers() ) && isMethod.getAnnotation( Transient.class ) == null ) {
+				// No such method should throw the caught exception.  So if we get here, there was
+				// such a method.
+				checkGetAndIsVariants( containerClass, propertyName, getMethod, isMethod );
+			}
+		}
+		catch (NoSuchMethodException ignore) {
+		}
+	}
+
+	private static void checkGetAndIsVariants(
+			Class containerClass,
+			String propertyName,
+			Method getMethod,
+			Method isMethod) {
+		// Check the return types.  If they are the same, its ok.  If they are different
+		// we are in a situation where we could not reasonably know which to use.
+		if ( !isMethod.getReturnType().equals( getMethod.getReturnType() ) ) {
+			throw new MappingException(
+					String.format(
+							Locale.ROOT,
+							"In trying to locate getter for property [%s], Class [%s] defined " +
+									"both a `get` [%s] and `is` [%s] variant",
+							propertyName,
+							containerClass.getName(),
+							getMethod.toString(),
+							isMethod.toString()
+					)
+			);
+		}
+	}
+
+	private static void verifyNoGetVariantExists(
+			Class containerClass,
+			String propertyName,
+			Method isMethod,
+			String stemName) {
+		// verify that the Class does not also define a method with the same stem name with 'is'
+		try {
+			final Method getMethod = containerClass.getDeclaredMethod( "get" + stemName );
+			// No such method should throw the caught exception.  So if we get here, there was
+			// such a method.
+			if ( !Modifier.isStatic( getMethod.getModifiers() ) && getMethod.getAnnotation( Transient.class ) == null ) {
+				checkGetAndIsVariants( containerClass, propertyName, getMethod, isMethod );
+			}
+		}
+		catch (NoSuchMethodException ignore) {
+		}
+	}
+
+	public static Method getterMethodOrNull(Class containerJavaType, String propertyName) {
+		try {
+			return findGetterMethod( containerJavaType, propertyName );
+		}
+		catch (PropertyNotFoundException e) {
+			return null;
+		}
+	}
+
+	public static Method setterMethodOrNull(Class containerJavaType, String propertyName, Class propertyJavaType) {
+		try {
+			return findSetterMethod( containerJavaType, propertyName, propertyJavaType );
+		}
+		catch (PropertyNotFoundException e) {
+			return null;
+		}
+	}
+
+	public static Method findSetterMethod(Class containerClass, String propertyName, Class propertyType) {
+		Class checkClass = containerClass;
+		Method setter = null;
+
+		// check containerClass, and then its super types (if any)
+		while ( setter == null && checkClass != null ) {
+			if ( checkClass.equals( Object.class ) ) {
+				break;
+			}
+
+			setter = setterOrNull( checkClass, propertyName, propertyType );
+			checkClass = checkClass.getSuperclass();
+		}
+
+		// if no setter found yet, check all implemented interfaces
+		if ( setter == null ) {
+			setter = setterOrNull( containerClass.getInterfaces(), propertyName, propertyType );
+//			for ( Class theInterface : containerClass.getInterfaces() ) {
+//				setter = setterOrNull( theInterface, propertyName, propertyType );
+//				if ( setter != null ) {
+//					break;
+//				}
+//			}
+		}
+
+		if ( setter == null ) {
+			throw new PropertyNotFoundException(
+					String.format(
+							Locale.ROOT,
+							"Could not locate setter method for property [%s#%s]",
+							containerClass.getName(),
+							propertyName
+					)
+			);
+		}
+
+		ensureAccessibility( setter );
+
+		return setter;
+	}
+
+	private static Method setterOrNull(Class[] interfaces, String propertyName, Class propertyType) {
+		Method setter = null;
+		for ( int i = 0; setter == null && i < interfaces.length; ++i ) {
+			final Class anInterface = interfaces[i];
+			setter = setterOrNull( anInterface, propertyName, propertyType );
+			if ( setter == null ) {
+				// if no setter found yet, check all implemented interfaces of interface
+				setter = setterOrNull( anInterface.getInterfaces(), propertyName, propertyType );
+			}
+		}
+		return setter;
+	}
+
+	private static Method setterOrNull(Class theClass, String propertyName, Class propertyType) {
+		Method potentialSetter = null;
+
+		for ( Method method : theClass.getDeclaredMethods() ) {
+			final String methodName = method.getName();
+			if ( method.getParameterCount() == 1 && methodName.startsWith( "set" ) ) {
+				final String testOldMethod = methodName.substring( 3 );
+				final String testStdMethod = Introspector.decapitalize( testOldMethod );
+				if ( testStdMethod.equals( propertyName ) || testOldMethod.equals( propertyName ) ) {
+					potentialSetter = method;
+					if ( propertyType == null || method.getParameterTypes()[0].equals( propertyType ) ) {
+						break;
+					}
+				}
+			}
+		}
+
+		return potentialSetter;
+	}
+
+	/**
+	 * Similar to {@link #getterMethodOrNull}, except that here we are just looking for the
+	 * corresponding getter for a field (defined as field access) if one exists.
+	 *
+	 * We do not look at supers, although conceivably the super could declare the method
+	 * as an abstract - but again, that is such an edge case...
+	 */
+	public static Method findGetterMethodForFieldAccess(Field field, String propertyName) {
+		for ( Method method : field.getDeclaringClass().getDeclaredMethods() ) {
+			// if the method has parameters, skip it
+			if ( method.getParameterCount() != 0 ) {
+				continue;
+			}
+
+			if ( Modifier.isStatic( method.getModifiers() ) ) {
+				continue;
+			}
+
+			if ( ! method.getReturnType().isAssignableFrom( field.getType() ) ) {
+				continue;
+			}
+
+			final String methodName = method.getName();
+
+			// try "get"
+			if ( methodName.startsWith( "get" ) ) {
+				final String stemName = methodName.substring( 3 );
+				final String decapitalizedStemName = Introspector.decapitalize( stemName );
+				if ( stemName.equals( propertyName ) || decapitalizedStemName.equals( propertyName ) ) {
+					return method;
+				}
+
+			}
+
+			// if not "get", then try "is"
+			if ( methodName.startsWith( "is" ) ) {
+				final String stemName = methodName.substring( 2 );
+				String decapitalizedStemName = Introspector.decapitalize( stemName );
+				if ( stemName.equals( propertyName ) || decapitalizedStemName.equals( propertyName ) ) {
+					return method;
+				}
+			}
+		}
+
+		return null;
+	}
 }

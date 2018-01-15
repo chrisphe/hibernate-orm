@@ -1,39 +1,24 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2008, Red Hat Middleware LLC or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Middleware LLC.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
- *
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.id;
+
 import java.io.Serializable;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
+import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 
-import org.jboss.logging.Logger;
-
 import org.hibernate.HibernateException;
+import org.hibernate.dialect.Dialect;
+import org.hibernate.internal.CoreLogging;
 import org.hibernate.internal.CoreMessageLogger;
+import org.hibernate.internal.util.StringHelper;
 import org.hibernate.type.CustomType;
 import org.hibernate.type.Type;
 
@@ -44,9 +29,7 @@ import org.hibernate.type.Type;
  * @author Steve Ebersole
  */
 public final class IdentifierGeneratorHelper {
-
-    private static final CoreMessageLogger LOG = Logger.getMessageLogger(CoreMessageLogger.class,
-                                                                       IdentifierGeneratorHelper.class.getName());
+	private static final CoreMessageLogger LOG = CoreLogging.messageLogger( IdentifierGeneratorHelper.class );
 
 	/**
 	 * Marker object returned from {@link IdentifierGenerator#generate} to indicate that we should short-circuit any
@@ -79,17 +62,19 @@ public final class IdentifierGeneratorHelper {
 	 * @param rs The result set from which to extract the the generated identity.
 	 * @param identifier The name of the identifier column
 	 * @param type The expected type mapping for the identity value.
+	 * @param dialect The current database dialect.
 	 *
 	 * @return The generated identity value
 	 *
 	 * @throws SQLException Can be thrown while accessing the result set
 	 * @throws HibernateException Indicates a problem reading back a generated identity value.
 	 */
-	public static Serializable getGeneratedIdentity(ResultSet rs, String identifier, Type type) throws SQLException, HibernateException {
+	public static Serializable getGeneratedIdentity(ResultSet rs, String identifier, Type type, Dialect dialect)
+			throws SQLException, HibernateException {
 		if ( !rs.next() ) {
 			throw new HibernateException( "The database returned no natively generated identity value" );
 		}
-		final Serializable id = get( rs, identifier, type );
+		final Serializable id = get( rs, identifier, type, dialect );
 		LOG.debugf( "Natively generated identity: %s", id );
 		return id;
 	}
@@ -101,15 +86,17 @@ public final class IdentifierGeneratorHelper {
 	 * @param rs The result set from which to extract the value.
 	 * @param identifier The name of the identifier column
 	 * @param type The expected type of the value.
+	 * @param dialect The current database dialect.
 	 *
 	 * @return The extracted value.
 	 *
 	 * @throws SQLException Indicates problems access the result set
 	 * @throws IdentifierGenerationException Indicates an unknown type.
 	 */
-	public static Serializable get(ResultSet rs, String identifier, Type type) throws SQLException, IdentifierGenerationException {
+	public static Serializable get(ResultSet rs, String identifier, Type type, Dialect dialect)
+			throws SQLException, IdentifierGenerationException {
 		if ( ResultSetIdentifierConsumer.class.isInstance( type ) ) {
-			return ( ( ResultSetIdentifierConsumer ) type ).consumeIdentifier( rs );
+			return ( (ResultSetIdentifierConsumer) type ).consumeIdentifier( rs );
 		}
 		if ( CustomType.class.isInstance( type ) ) {
 			final CustomType customType = (CustomType) type;
@@ -117,9 +104,18 @@ public final class IdentifierGeneratorHelper {
 				return ( (ResultSetIdentifierConsumer) customType.getUserType() ).consumeIdentifier( rs );
 			}
 		}
+		ResultSetMetaData resultSetMetaData = null;
+		int columnCount = 1;
+		try {
+			resultSetMetaData = rs.getMetaData();
+			columnCount = resultSetMetaData.getColumnCount();
+		}
+		catch (Exception e) {
+			//Oracle driver will throw NPE
+		}
 
 		Class clazz = type.getReturnedClass();
-		if (rs.getMetaData().getColumnCount() == 1) {
+		if ( columnCount == 1 ) {
 			if ( clazz == Long.class ) {
 				return rs.getLong( 1 );
 			}
@@ -145,29 +141,42 @@ public final class IdentifierGeneratorHelper {
 			}
 		}
 		else {
-			if ( clazz == Long.class ) {
-				return rs.getLong(identifier);
+			try {
+				return extractIdentifier( rs, identifier, type, clazz );
 			}
-			else if ( clazz == Integer.class ) {
-				return rs.getInt(identifier);
+			catch (SQLException e) {
+				if ( StringHelper.isQuoted( identifier, dialect ) ) {
+					return extractIdentifier( rs, StringHelper.unquote( identifier, dialect ), type, clazz );
+				}
+				throw e;
 			}
-			else if ( clazz == Short.class ) {
-				return rs.getShort(identifier);
-			}
-			else if ( clazz == String.class ) {
-				return rs.getString(identifier);
-			}
-			else if ( clazz == BigInteger.class ) {
-				return rs.getBigDecimal(identifier).setScale( 0, BigDecimal.ROUND_UNNECESSARY ).toBigInteger();
-			}
-			else if ( clazz == BigDecimal.class ) {
-				return rs.getBigDecimal(identifier).setScale( 0, BigDecimal.ROUND_UNNECESSARY );
-			}
-			else {
-				throw new IdentifierGenerationException(
-						"unrecognized id type : " + type.getName() + " -> " + clazz.getName()
-				);
-			}
+		}
+	}
+
+	private static Serializable extractIdentifier(ResultSet rs, String identifier, Type type, Class clazz)
+			throws SQLException {
+		if ( clazz == Long.class ) {
+			return rs.getLong( identifier );
+		}
+		else if ( clazz == Integer.class ) {
+			return rs.getInt( identifier );
+		}
+		else if ( clazz == Short.class ) {
+			return rs.getShort( identifier );
+		}
+		else if ( clazz == String.class ) {
+			return rs.getString( identifier );
+		}
+		else if ( clazz == BigInteger.class ) {
+			return rs.getBigDecimal( identifier ).setScale( 0, BigDecimal.ROUND_UNNECESSARY ).toBigInteger();
+		}
+		else if ( clazz == BigDecimal.class ) {
+			return rs.getBigDecimal( identifier ).setScale( 0, BigDecimal.ROUND_UNNECESSARY );
+		}
+		else {
+			throw new IdentifierGenerationException(
+					"unrecognized id type : " + type.getName() + " -> " + clazz.getName()
+			);
 		}
 	}
 
@@ -180,19 +189,18 @@ public final class IdentifierGeneratorHelper {
 	 * @return The wrapped type.
 	 *
 	 * @throws IdentifierGenerationException Indicates an unhandled 'clazz'.
-	 *
 	 * @deprecated Use the {@link #getIntegralDataTypeHolder holders} instead.
 	 */
 	@Deprecated
-    public static Number createNumber(long value, Class clazz) throws IdentifierGenerationException {
+	public static Number createNumber(long value, Class clazz) throws IdentifierGenerationException {
 		if ( clazz == Long.class ) {
 			return value;
 		}
 		else if ( clazz == Integer.class ) {
-			return ( int ) value;
+			return (int) value;
 		}
 		else if ( clazz == Short.class ) {
-			return ( short ) value;
+			return (short) value;
 		}
 		else {
 			throw new IdentifierGenerationException( "unrecognized id type : " + clazz.getName() );
@@ -298,6 +306,7 @@ public final class IdentifierGeneratorHelper {
 
 		public void bind(PreparedStatement preparedStatement, int position) throws SQLException {
 			// TODO : bind it as 'exact type'?  Not sure if that gains us anything...
+			LOG.tracef( "binding parameter [%s] - [%s]", position, value );
 			preparedStatement.setLong( position, value );
 		}
 
@@ -381,10 +390,10 @@ public final class IdentifierGeneratorHelper {
 				return value;
 			}
 			else if ( exactType == Integer.class ) {
-				return ( int ) value;
+				return (int) value;
 			}
 			else {
-				return ( short ) value;
+				return (short) value;
 			}
 		}
 
@@ -401,12 +410,12 @@ public final class IdentifierGeneratorHelper {
 		}
 
 		@Override
-        public String toString() {
+		public String toString() {
 			return "BasicHolder[" + exactType.getName() + "[" + value + "]]";
 		}
 
 		@Override
-        public boolean equals(Object o) {
+		public boolean equals(Object o) {
 			if ( this == o ) {
 				return true;
 			}
@@ -420,7 +429,7 @@ public final class IdentifierGeneratorHelper {
 		}
 
 		@Override
-        public int hashCode() {
+		public int hashCode() {
 			return (int) ( value ^ ( value >>> 32 ) );
 		}
 	}
@@ -542,12 +551,12 @@ public final class IdentifierGeneratorHelper {
 		}
 
 		@Override
-        public String toString() {
+		public String toString() {
 			return "BigIntegerHolder[" + value + "]";
 		}
 
 		@Override
-        public boolean equals(Object o) {
+		public boolean equals(Object o) {
 			if ( this == o ) {
 				return true;
 			}
@@ -563,7 +572,7 @@ public final class IdentifierGeneratorHelper {
 		}
 
 		@Override
-        public int hashCode() {
+		public int hashCode() {
 			return value != null ? value.hashCode() : 0;
 		}
 	}
@@ -685,12 +694,12 @@ public final class IdentifierGeneratorHelper {
 		}
 
 		@Override
-        public String toString() {
+		public String toString() {
 			return "BigDecimalHolder[" + value + "]";
 		}
 
 		@Override
-        public boolean equals(Object o) {
+		public boolean equals(Object o) {
 			if ( this == o ) {
 				return true;
 			}
@@ -706,7 +715,7 @@ public final class IdentifierGeneratorHelper {
 		}
 
 		@Override
-        public int hashCode() {
+		public int hashCode() {
 			return value != null ? value.hashCode() : 0;
 		}
 	}

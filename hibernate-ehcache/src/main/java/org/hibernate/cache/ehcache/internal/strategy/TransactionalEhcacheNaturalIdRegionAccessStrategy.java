@@ -1,37 +1,23 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2011, Red Hat Inc. or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Inc.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.cache.ehcache.internal.strategy;
 
 import net.sf.ehcache.Ehcache;
 import net.sf.ehcache.Element;
 
+import org.hibernate.boot.spi.SessionFactoryOptions;
 import org.hibernate.cache.CacheException;
 import org.hibernate.cache.ehcache.internal.regions.EhcacheNaturalIdRegion;
+import org.hibernate.cache.internal.DefaultCacheKeysFactory;
 import org.hibernate.cache.spi.NaturalIdRegion;
 import org.hibernate.cache.spi.access.NaturalIdRegionAccessStrategy;
 import org.hibernate.cache.spi.access.SoftLock;
-import org.hibernate.cfg.Settings;
+import org.hibernate.engine.spi.SharedSessionContractImplementor;
+import org.hibernate.persister.entity.EntityPersister;
 
 /**
  * JTA NaturalIdRegionAccessStrategy.
@@ -53,72 +39,64 @@ public class TransactionalEhcacheNaturalIdRegionAccessStrategy
 	 * @param ehcache the cache.
 	 * @param settings the Hibernate settings.
 	 */
-	public TransactionalEhcacheNaturalIdRegionAccessStrategy(EhcacheNaturalIdRegion region, Ehcache ehcache, Settings settings) {
+	public TransactionalEhcacheNaturalIdRegionAccessStrategy(
+			EhcacheNaturalIdRegion region,
+			Ehcache ehcache,
+			SessionFactoryOptions settings) {
 		super( region, settings );
 		this.ehcache = ehcache;
 	}
 
-	/**
-	 * {@inheritDoc}
-	 */
-	public boolean afterInsert(Object key, Object value ) {
+	@Override
+	public boolean afterInsert(SharedSessionContractImplementor session, Object key, Object value) {
 		return false;
 	}
 
-	/**
-	 * {@inheritDoc}
-	 */
-	public boolean afterUpdate(Object key, Object value, SoftLock lock) {
+	@Override
+	public boolean afterUpdate(SharedSessionContractImplementor session, Object key, Object value, SoftLock lock) {
 		return false;
 	}
 
-
-	/**
-	 * {@inheritDoc}
-	 */
-	public Object get(Object key, long txTimestamp) throws CacheException {
+	@Override
+	public Object get(SharedSessionContractImplementor session, Object key, long txTimestamp) throws CacheException {
 		try {
-			Element element = ehcache.get( key );
+			final Element element = ehcache.get( key );
 			return element == null ? null : element.getObjectValue();
 		}
-		catch ( net.sf.ehcache.CacheException e ) {
+		catch (net.sf.ehcache.CacheException e) {
 			throw new CacheException( e );
 		}
 	}
 
-	/**
-	 * {@inheritDoc}
-	 */
+	@Override
 	public NaturalIdRegion getRegion() {
-		return region;
+		return region();
 	}
 
-	/**
-	 * {@inheritDoc}
-	 */
-	public boolean insert(Object key, Object value ) throws CacheException {
+	@Override
+	public boolean insert(SharedSessionContractImplementor session, Object key, Object value) throws CacheException {
 		//OptimisticCache? versioning?
 		try {
 			ehcache.put( new Element( key, value ) );
 			return true;
 		}
-		catch ( net.sf.ehcache.CacheException e ) {
+		catch (net.sf.ehcache.CacheException e) {
 			throw new CacheException( e );
 		}
 	}
 
-	/**
-	 * {@inheritDoc}
-	 */
-	public SoftLock lockItem(Object key, Object version) throws CacheException {
+	@Override
+	public SoftLock lockItem(SharedSessionContractImplementor session, Object key, Object version) throws CacheException {
 		return null;
 	}
 
-	/**
-	 * {@inheritDoc}
-	 */
-	public boolean putFromLoad(Object key, Object value, long txTimestamp,
-							   Object version, boolean minimalPutOverride) throws CacheException {
+	@Override
+	public boolean putFromLoad(
+			SharedSessionContractImplementor session, Object key,
+			Object value,
+			long txTimestamp,
+			Object version,
+			boolean minimalPutOverride) throws CacheException {
 		try {
 			if ( minimalPutOverride && ehcache.get( key ) != null ) {
 				return false;
@@ -127,42 +105,44 @@ public class TransactionalEhcacheNaturalIdRegionAccessStrategy
 			ehcache.put( new Element( key, value ) );
 			return true;
 		}
-		catch ( net.sf.ehcache.CacheException e ) {
+		catch (net.sf.ehcache.CacheException e) {
 			throw new CacheException( e );
 		}
 	}
 
-	/**
-	 * {@inheritDoc}
-	 */
 	@Override
-	public void remove(Object key) throws CacheException {
+	public void remove(SharedSessionContractImplementor session, Object key) throws CacheException {
 		try {
 			ehcache.remove( key );
 		}
-		catch ( net.sf.ehcache.CacheException e ) {
+		catch (net.sf.ehcache.CacheException e) {
 			throw new CacheException( e );
 		}
 	}
 
-	/**
-	 * {@inheritDoc}
-	 */
-	public void unlockItem(Object key, SoftLock lock) throws CacheException {
+	@Override
+	public void unlockItem(SharedSessionContractImplementor session, Object key, SoftLock lock) throws CacheException {
 		// no-op
 	}
 
-	/**
-	 * {@inheritDoc}
-	 */
-	public boolean update(Object key, Object value ) throws CacheException {
+	@Override
+	public boolean update(SharedSessionContractImplementor session, Object key, Object value) throws CacheException {
 		try {
 			ehcache.put( new Element( key, value ) );
 			return true;
 		}
-		catch ( net.sf.ehcache.CacheException e ) {
+		catch (net.sf.ehcache.CacheException e) {
 			throw new CacheException( e );
 		}
 	}
 
+	@Override
+	public Object generateCacheKey(Object[] naturalIdValues, EntityPersister persister, SharedSessionContractImplementor session) {
+		return DefaultCacheKeysFactory.staticCreateNaturalIdKey(naturalIdValues, persister, session);
+	}
+
+	@Override
+	public Object[] getNaturalIdValues(Object cacheKey) {
+		return DefaultCacheKeysFactory.staticGetNaturalIdValues(cacheKey);
+	}
 }

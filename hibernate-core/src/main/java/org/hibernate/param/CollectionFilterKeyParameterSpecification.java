@@ -1,33 +1,18 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2008, Red Hat Middleware LLC or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Middleware LLC.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
- *
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.param;
+
+import java.io.Serializable;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
 
+import org.hibernate.QueryException;
 import org.hibernate.engine.spi.QueryParameters;
-import org.hibernate.engine.spi.SessionImplementor;
+import org.hibernate.engine.spi.SharedSessionContractImplementor;
 import org.hibernate.type.Type;
 
 /**
@@ -37,54 +22,44 @@ import org.hibernate.type.Type;
  * @author Steve Ebersole
  */
 public class CollectionFilterKeyParameterSpecification implements ParameterSpecification {
+	public static final String PARAM_KEY = "{collection_key}";
+
 	private final String collectionRole;
 	private final Type keyType;
-	private final int queryParameterPosition;
 
 	/**
 	 * Creates a specialized collection-filter collection-key parameter spec.
 	 *
 	 * @param collectionRole The collection role being filtered.
 	 * @param keyType The mapped collection-key type.
-	 * @param queryParameterPosition The position within {@link org.hibernate.engine.spi.QueryParameters} where
-	 * we can find the appropriate param value to bind.
 	 */
-	public CollectionFilterKeyParameterSpecification(String collectionRole, Type keyType, int queryParameterPosition) {
+	public CollectionFilterKeyParameterSpecification(String collectionRole, Type keyType) {
 		this.collectionRole = collectionRole;
 		this.keyType = keyType;
-		this.queryParameterPosition = queryParameterPosition;
 	}
 
-	/**
-	 * {@inheritDoc}
-	 */
+	@Override
 	public int bind(
 			PreparedStatement statement,
 			QueryParameters qp,
-			SessionImplementor session,
+			SharedSessionContractImplementor session,
 			int position) throws SQLException {
-		Object value = qp.getPositionalParameterValues()[queryParameterPosition];
+		final Object value = qp.getNamedParameters().get( PARAM_KEY ).getValue();
 		keyType.nullSafeSet( statement, value, position, session );
 		return keyType.getColumnSpan( session.getFactory() );
 	}
 
-	/**
-	 * {@inheritDoc}
-	 */
+	@Override
 	public Type getExpectedType() {
 		return keyType;
 	}
 
-	/**
-	 * {@inheritDoc}
-	 */
+	@Override
 	public void setExpectedType(Type expectedType) {
 		// todo : throw exception?
 	}
 
-	/**
-	 * {@inheritDoc}
-	 */
+	@Override
 	public String renderDisplayInfo() {
 		return "collection-filter-key=" + collectionRole;
 	}

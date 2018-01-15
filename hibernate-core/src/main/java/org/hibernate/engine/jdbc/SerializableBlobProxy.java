@@ -1,27 +1,11 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2009 by Red Hat Inc and/or its affiliates or by
- * third-party contributors as indicated by either @author tags or express
- * copyright attribution statements applied by the authors.  All
- * third-party contributions are distributed under license by Red Hat Inc.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.engine.jdbc;
+
 import java.io.Serializable;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.InvocationTargetException;
@@ -41,7 +25,7 @@ import org.hibernate.HibernateException;
 public class SerializableBlobProxy implements InvocationHandler, Serializable {
 	private static final Class[] PROXY_INTERFACES = new Class[] { Blob.class, WrappedBlob.class, Serializable.class };
 
-	private transient final Blob blob;
+	private final transient Blob blob;
 
 	/**
 	 * Builds a serializable {@link Blob} wrapper around the given {@link Blob}.
@@ -53,6 +37,11 @@ public class SerializableBlobProxy implements InvocationHandler, Serializable {
 		this.blob = blob;
 	}
 
+	/**
+	 * Access to the wrapped Blob reference
+	 *
+	 * @return The wrapped Blob reference
+	 */
 	public Blob getWrappedBlob() {
 		if ( blob == null ) {
 			throw new IllegalStateException( "Blobs may not be accessed after serialization" );
@@ -62,9 +51,7 @@ public class SerializableBlobProxy implements InvocationHandler, Serializable {
 		}
 	}
 
-	/**
-	 * {@inheritDoc}
-	 */
+	@Override
 	public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
 		if ( "getWrappedBlob".equals( method.getName() ) ) {
 			return getWrappedBlob();
@@ -88,11 +75,7 @@ public class SerializableBlobProxy implements InvocationHandler, Serializable {
 	 * @return The generated proxy.
 	 */
 	public static Blob generateProxy(Blob blob) {
-		return ( Blob ) Proxy.newProxyInstance(
-				getProxyClassLoader(),
-				PROXY_INTERFACES,
-				new SerializableBlobProxy( blob )
-		);
+		return (Blob) Proxy.newProxyInstance( getProxyClassLoader(), PROXY_INTERFACES, new SerializableBlobProxy( blob ) );
 	}
 
 	/**
@@ -102,10 +85,6 @@ public class SerializableBlobProxy implements InvocationHandler, Serializable {
 	 * @return The class loader appropriate for proxy construction.
 	 */
 	public static ClassLoader getProxyClassLoader() {
-		ClassLoader cl = Thread.currentThread().getContextClassLoader();
-		if ( cl == null ) {
-			cl = WrappedBlob.class.getClassLoader();
-		}
-		return cl;
+		return WrappedBlob.class.getClassLoader();
 	}
 }

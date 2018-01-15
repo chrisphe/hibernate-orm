@@ -1,27 +1,11 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2010, Red Hat Inc. or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Inc.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.dialect.lock;
+
 import org.hibernate.LockMode;
 import org.hibernate.LockOptions;
 import org.hibernate.persister.entity.Lockable;
@@ -54,19 +38,35 @@ public abstract class AbstractSelectLockingStrategy implements LockingStrategy {
 	protected abstract String generateLockString(int lockTimeout);
 
 	protected String determineSql(int timeout) {
-		return timeout == LockOptions.WAIT_FOREVER
-				? waitForeverSql
-				: timeout == LockOptions.NO_WAIT
-						? getNoWaitSql()
-						: generateLockString( timeout );
+		if ( timeout == LockOptions.WAIT_FOREVER) {
+			return waitForeverSql;
+		}
+		else if ( timeout == LockOptions.NO_WAIT) {
+			return getNoWaitSql();
+		}
+		else if ( timeout == LockOptions.SKIP_LOCKED) {
+			return getSkipLockedSql();
+		}
+		else {
+			return generateLockString( timeout );
+		}
 	}
 
 	private String noWaitSql;
 
-	public String getNoWaitSql() {
+	protected String getNoWaitSql() {
 		if ( noWaitSql == null ) {
 			noWaitSql = generateLockString( LockOptions.NO_WAIT );
 		}
 		return noWaitSql;
+	}
+
+	private String skipLockedSql;
+
+	protected String getSkipLockedSql() {
+		if ( skipLockedSql == null ) {
+			skipLockedSql = generateLockString( LockOptions.SKIP_LOCKED );
+		}
+		return skipLockedSql;
 	}
 }

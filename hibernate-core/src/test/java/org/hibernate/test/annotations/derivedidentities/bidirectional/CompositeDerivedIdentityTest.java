@@ -1,34 +1,23 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2011, Red Hat Inc. or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Inc.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.test.annotations.derivedidentities.bidirectional;
 
 import org.junit.Test;
 
 import org.hibernate.Session;
+import org.hibernate.engine.spi.SessionImplementor;
+import org.hibernate.internal.SessionImpl;
+import org.hibernate.testing.TestForIssue;
 import org.hibernate.testing.junit4.BaseCoreFunctionalTestCase;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertSame;
+import static org.junit.Assert.assertTrue;
 
 public class CompositeDerivedIdentityTest extends BaseCoreFunctionalTestCase {
 	@Override
@@ -68,6 +57,43 @@ public class CompositeDerivedIdentityTest extends BaseCoreFunctionalTestCase {
 		order = (Order) session.get(Order.class, orderId);
 		assertEquals(1, order.getLineItems().size());
 		session.delete( order );
+		session.getTransaction().commit();
+		session.close();
+	}
+
+	@Test
+	@TestForIssue( jiraKey = "HHH-10476")
+	public void testBidirectonalKeyManyToOneId() {
+		Product product = new Product();
+		product.setName( "Product 1" );
+
+		Session session = openSession();
+		session.beginTransaction();
+		session.save( product );
+		session.getTransaction().commit();
+		session.close();
+
+		Order order = new Order();
+		order.setName( "Order 1" );
+		order.addLineItem( product, 2 );
+
+		session = openSession();
+		session.beginTransaction();
+		session.save( order );
+		session.getTransaction().commit();
+		session.close();
+
+		session = openSession();
+		session.beginTransaction();
+		OrderLine orderLine = order.getLineItems().iterator().next();
+		orderLine.setAmount( 5 );
+		OrderLine orderLineGotten = session.get( OrderLine.class, orderLine );
+		assertSame( orderLineGotten, orderLine );
+		assertEquals( Integer.valueOf( 2 ), orderLineGotten.getAmount() );
+		SessionImplementor si = (SessionImplementor) session;
+		assertTrue( si.getPersistenceContext().isEntryFor( orderLineGotten ) );
+		assertFalse( si.getPersistenceContext().isEntryFor( orderLineGotten.getOrder() ) );
+		assertFalse( si.getPersistenceContext().isEntryFor( orderLineGotten.getProduct() ) );
 		session.getTransaction().commit();
 		session.close();
 	}

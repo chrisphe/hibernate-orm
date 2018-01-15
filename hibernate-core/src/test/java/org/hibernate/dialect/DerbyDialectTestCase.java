@@ -1,41 +1,27 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2009 by Red Hat Inc and/or its affiliates or by
- * third-party contributors as indicated by either @author tags or express
- * copyright attribution statements applied by the authors.  All
- * third-party contributions are distributed under license by Red Hat Inc.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.dialect;
 
-import org.junit.Test;
+import static org.hamcrest.CoreMatchers.instanceOf;
+import static org.hamcrest.CoreMatchers.is;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertThat;
 
+import org.hibernate.hql.spi.id.MultiTableBulkIdStrategy;
+import org.hibernate.hql.spi.id.local.LocalTemporaryTableBulkIdStrategy;
 import org.hibernate.testing.TestForIssue;
 import org.hibernate.testing.junit4.BaseUnitTestCase;
-
-import static org.junit.Assert.assertEquals;
+import org.junit.Test;
 
 /**
  * Testing of patched support for Derby limit and offset queries; see HHH-3972
  *
  * @author Evan Leonard
  */
-@TestForIssue( jiraKey = "HHH-3972" )
 public class DerbyDialectTestCase extends BaseUnitTestCase {
 
 	private static class LocalDerbyDialect extends DerbyDialect {
@@ -45,6 +31,7 @@ public class DerbyDialectTestCase extends BaseUnitTestCase {
 	}
 
 	@Test
+	@TestForIssue( jiraKey = "HHH-3972" )
 	public void testInsertLimitClause() {
 		final int limit = 50;
 		final String input = "select * from tablename t where t.cat = 5";
@@ -55,6 +42,7 @@ public class DerbyDialectTestCase extends BaseUnitTestCase {
 	}
 
 	@Test
+	@TestForIssue( jiraKey = "HHH-3972" )
 	public void testInsertLimitWithOffsetClause() {
 		final int limit = 50;
 		final int offset = 200;
@@ -66,6 +54,7 @@ public class DerbyDialectTestCase extends BaseUnitTestCase {
 	}
 
 	@Test
+	@TestForIssue( jiraKey = "HHH-3972" )
 	public void testInsertLimitWithForUpdateClause() {
 		final int limit = 50;
 		final int offset = 200;
@@ -78,6 +67,7 @@ public class DerbyDialectTestCase extends BaseUnitTestCase {
 	}
 
 	@Test
+	@TestForIssue( jiraKey = "HHH-3972" )
 	public void testInsertLimitWithWithClause() {
 		final int limit = 50;
 		final int offset = 200;
@@ -90,6 +80,7 @@ public class DerbyDialectTestCase extends BaseUnitTestCase {
 	}
 
 	@Test
+	@TestForIssue( jiraKey = "HHH-3972" )
 	public void testInsertLimitWithForUpdateAndWithClauses() {
 		final int limit = 50;
 		final int offset = 200;
@@ -99,5 +90,12 @@ public class DerbyDialectTestCase extends BaseUnitTestCase {
 
 		final String actual = new LocalDerbyDialect().getLimitString( input, offset, limit );
 		assertEquals( expected, actual );
+	}
+
+	@Test
+	@TestForIssue(jiraKey = "HHH-10238")
+	public void testDefaultMultiTableBulkIdStrategyIsLocal() {
+		MultiTableBulkIdStrategy actual = new LocalDerbyDialect().getDefaultMultiTableBulkIdStrategy();
+		assertThat(actual, is(instanceOf(LocalTemporaryTableBulkIdStrategy.class)));
 	}
 }

@@ -1,25 +1,8 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2010, Red Hat Inc. or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Inc.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.type;
 
@@ -33,10 +16,10 @@ import org.hibernate.AssertionFailure;
 import org.hibernate.HibernateException;
 import org.hibernate.MappingException;
 import org.hibernate.engine.internal.ForeignKeys;
+import org.hibernate.engine.jdbc.Size;
 import org.hibernate.engine.spi.EntityKey;
 import org.hibernate.engine.spi.Mapping;
-import org.hibernate.engine.spi.SessionImplementor;
-import org.hibernate.metamodel.relational.Size;
+import org.hibernate.engine.spi.SharedSessionContractImplementor;
 import org.hibernate.persister.entity.EntityPersister;
 
 /**
@@ -67,9 +50,14 @@ public class ManyToOneType extends EntityType {
 	 * @param lazy Should the association be handled lazily
 	 */
 	public ManyToOneType(TypeFactory.TypeScope scope, String referencedEntityName, boolean lazy) {
-		this( scope, referencedEntityName, null, lazy, true, false, false, false );
+		this( scope, referencedEntityName, true, null, lazy, true, false, false );
 	}
 
+
+	/**
+	 * @deprecated Use {@link #ManyToOneType(TypeFactory.TypeScope, String, boolean, String, boolean, boolean, boolean, boolean ) } instead.
+	 */
+	@Deprecated
 	public ManyToOneType(
 			TypeFactory.TypeScope scope,
 			String referencedEntityName,
@@ -79,15 +67,29 @@ public class ManyToOneType extends EntityType {
 			boolean isEmbeddedInXML,
 			boolean ignoreNotFound,
 			boolean isLogicalOneToOne) {
-		super( scope, referencedEntityName, uniqueKeyPropertyName, !lazy, isEmbeddedInXML, unwrapProxy );
+		this( scope, referencedEntityName, uniqueKeyPropertyName == null, uniqueKeyPropertyName, lazy, unwrapProxy, ignoreNotFound, isLogicalOneToOne );
+	}
+
+	public ManyToOneType(
+			TypeFactory.TypeScope scope,
+			String referencedEntityName,
+			boolean referenceToPrimaryKey,
+			String uniqueKeyPropertyName,
+			boolean lazy,
+			boolean unwrapProxy,
+			boolean ignoreNotFound,
+			boolean isLogicalOneToOne) {
+		super( scope, referencedEntityName, referenceToPrimaryKey, uniqueKeyPropertyName, !lazy, unwrapProxy );
 		this.ignoreNotFound = ignoreNotFound;
 		this.isLogicalOneToOne = isLogicalOneToOne;
 	}
 
+	@Override
 	protected boolean isNullable() {
 		return ignoreNotFound;
 	}
 
+	@Override
 	public boolean isAlwaysDirtyChecked() {
 		// always need to dirty-check, even when non-updateable;
 		// this ensures that when the association is updated,
@@ -96,66 +98,102 @@ public class ManyToOneType extends EntityType {
 		return true;
 	}
 
+	@Override
 	public boolean isOneToOne() {
 		return false;
 	}
 
+	@Override
 	public boolean isLogicalOneToOne() {
 		return isLogicalOneToOne;
 	}
 
+	@Override
 	public int getColumnSpan(Mapping mapping) throws MappingException {
-		// our column span is the number of columns in the PK
-		return getIdentifierOrUniqueKeyType( mapping ).getColumnSpan( mapping );
+		return requireIdentifierOrUniqueKeyType( mapping ).getColumnSpan( mapping );
 	}
 
+	private Type requireIdentifierOrUniqueKeyType(Mapping mapping) {
+		final Type fkTargetType = getIdentifierOrUniqueKeyType( mapping );
+		if ( fkTargetType == null ) {
+			throw new MappingException(
+					"Unable to determine FK target Type for many-to-one mapping: " +
+							"referenced-entity-name=[" + getAssociatedEntityName() +
+							"], referenced-entity-attribute-name=[" + getLHSPropertyName() + "]"
+			);
+		}
+		return fkTargetType;
+	}
+
+	@Override
 	public int[] sqlTypes(Mapping mapping) throws MappingException {
-		return getIdentifierOrUniqueKeyType( mapping ).sqlTypes( mapping );
+		return requireIdentifierOrUniqueKeyType( mapping ).sqlTypes( mapping );
 	}
 
 	@Override
 	public Size[] dictatedSizes(Mapping mapping) throws MappingException {
-		return getIdentifierOrUniqueKeyType( mapping ).dictatedSizes( mapping );
+		return requireIdentifierOrUniqueKeyType( mapping ).dictatedSizes( mapping );
 	}
 
 	@Override
 	public Size[] defaultSizes(Mapping mapping) throws MappingException {
-		return getIdentifierOrUniqueKeyType( mapping ).defaultSizes( mapping );
+		return requireIdentifierOrUniqueKeyType( mapping ).defaultSizes( mapping );
 	}
 
+	@Override
 	public void nullSafeSet(
 			PreparedStatement st,
 			Object value,
 			int index,
 			boolean[] settable,
-			SessionImplementor session) throws HibernateException, SQLException {
-		getIdentifierOrUniqueKeyType( session.getFactory() )
+			SharedSessionContractImplementor session) throws HibernateException, SQLException {
+		requireIdentifierOrUniqueKeyType( session.getFactory() )
 				.nullSafeSet( st, getIdentifier( value, session ), index, settable, session );
 	}
 
+	@Override
 	public void nullSafeSet(
 			PreparedStatement st,
 			Object value,
 			int index,
-			SessionImplementor session) throws HibernateException, SQLException {
-		getIdentifierOrUniqueKeyType( session.getFactory() )
+			SharedSessionContractImplementor session) throws HibernateException, SQLException {
+		requireIdentifierOrUniqueKeyType( session.getFactory() )
 				.nullSafeSet( st, getIdentifier( value, session ), index, session );
 	}
 
+	@Override
 	public ForeignKeyDirection getForeignKeyDirection() {
-		return ForeignKeyDirection.FOREIGN_KEY_FROM_PARENT;
+		return ForeignKeyDirection.FROM_PARENT;
 	}
 
+	@Override
 	public Object hydrate(
 			ResultSet rs,
 			String[] names,
-			SessionImplementor session,
+			SharedSessionContractImplementor session,
 			Object owner) throws HibernateException, SQLException {
 		// return the (fully resolved) identifier value, but do not resolve
 		// to the actual referenced entity instance
 		// NOTE: the owner of the association is not really the owner of the id!
-		Serializable id = (Serializable) getIdentifierOrUniqueKeyType( session.getFactory() )
-				.nullSafeGet( rs, names, session, null );
+
+		// First hydrate the ID to check if it is null.
+		// Don't bother resolving the ID if hydratedKeyState[i] is null.
+
+		// Implementation note: if id is a composite ID, then resolving a null value will
+		// result in instantiating an empty composite if AvailableSettings#CREATE_EMPTY_COMPOSITES_ENABLED
+		// is true. By not resolving a null value for a composite ID, we avoid the overhead of instantiating
+		// an empty composite, checking if it is equivalent to null (it should be), then ultimately throwing
+		// out the empty value.
+		final Object hydratedId = getIdentifierOrUniqueKeyType( session.getFactory() )
+				.hydrate( rs, names, session, null );
+		final Serializable id;
+		if ( hydratedId != null ) {
+			id = (Serializable) getIdentifierOrUniqueKeyType( session.getFactory() )
+					.resolve( hydratedId, session, null );
+		}
+		else {
+			id = null;
+		}
 		scheduleBatchLoadIfNeeded( id, session );
 		return id;
 	}
@@ -164,26 +202,30 @@ public class ManyToOneType extends EntityType {
 	 * Register the entity as batch loadable, if enabled
 	 */
 	@SuppressWarnings({ "JavaDoc" })
-	private void scheduleBatchLoadIfNeeded(Serializable id, SessionImplementor session) throws MappingException {
+	private void scheduleBatchLoadIfNeeded(Serializable id, SharedSessionContractImplementor session) throws MappingException {
 		//cannot batch fetch by unique key (property-ref associations)
 		if ( uniqueKeyPropertyName == null && id != null ) {
-			final EntityPersister persister = session.getFactory().getEntityPersister( getAssociatedEntityName() );
-			final EntityKey entityKey = session.generateEntityKey( id, persister );
-			if ( !session.getPersistenceContext().containsEntity( entityKey ) ) {
-				session.getPersistenceContext().getBatchFetchQueue().addBatchLoadableEntityKey( entityKey );
+			final EntityPersister persister = getAssociatedEntityPersister( session.getFactory() );
+			if ( persister.isBatchLoadable() ) {
+				final EntityKey entityKey = session.generateEntityKey( id, persister );
+				if ( !session.getPersistenceContext().containsEntity( entityKey ) ) {
+					session.getPersistenceContext().getBatchFetchQueue().addBatchLoadableEntityKey( entityKey );
+				}
 			}
 		}
 	}
-	
+
+	@Override
 	public boolean useLHSPrimaryKey() {
 		return false;
 	}
 
+	@Override
 	public boolean isModified(
 			Object old,
 			Object current,
 			boolean[] checkable,
-			SessionImplementor session) throws HibernateException {
+			SharedSessionContractImplementor session) throws HibernateException {
 		if ( current == null ) {
 			return old!=null;
 		}
@@ -196,15 +238,12 @@ public class ManyToOneType extends EntityType {
 				.isDirty( old, getIdentifier( current, session ), session );
 	}
 
+	@Override
 	public Serializable disassemble(
 			Object value,
-			SessionImplementor session,
+			SharedSessionContractImplementor session,
 			Object owner) throws HibernateException {
 
-		if ( isNotEmbedded( session ) ) {
-			return getIdentifierType( session ).disassemble( value, session, owner );
-		}
-		
 		if ( value == null ) {
 			return null;
 		}
@@ -226,9 +265,10 @@ public class ManyToOneType extends EntityType {
 		}
 	}
 
+	@Override
 	public Object assemble(
 			Serializable oid,
-			SessionImplementor session,
+			SharedSessionContractImplementor session,
 			Object owner) throws HibernateException {
 		
 		//TODO: currently broken for unique-key references (does not detect
@@ -236,10 +276,6 @@ public class ManyToOneType extends EntityType {
 		
 		Serializable id = assembleId( oid, session );
 
-		if ( isNotEmbedded( session ) ) {
-			return id;
-		}
-		
 		if ( id == null ) {
 			return null;
 		}
@@ -248,15 +284,17 @@ public class ManyToOneType extends EntityType {
 		}
 	}
 
-	private Serializable assembleId(Serializable oid, SessionImplementor session) {
+	private Serializable assembleId(Serializable oid, SharedSessionContractImplementor session) {
 		//the owner of the association is not the owner of the id
 		return ( Serializable ) getIdentifierType( session ).assemble( oid, session, null );
 	}
 
-	public void beforeAssemble(Serializable oid, SessionImplementor session) {
+	@Override
+	public void beforeAssemble(Serializable oid, SharedSessionContractImplementor session) {
 		scheduleBatchLoadIfNeeded( assembleId( oid, session ), session );
 	}
-	
+
+	@Override
 	public boolean[] toColumnNullness(Object value, Mapping mapping) {
 		boolean[] result = new boolean[ getColumnSpan( mapping ) ];
 		if ( value != null ) {
@@ -264,11 +302,12 @@ public class ManyToOneType extends EntityType {
 		}
 		return result;
 	}
-	
+
+	@Override
 	public boolean isDirty(
 			Object old,
 			Object current,
-			SessionImplementor session) throws HibernateException {
+			SharedSessionContractImplementor session) throws HibernateException {
 		if ( isSame( old, current ) ) {
 			return false;
 		}
@@ -277,11 +316,12 @@ public class ManyToOneType extends EntityType {
 		return getIdentifierType( session ).isDirty( oldid, newid, session );
 	}
 
+	@Override
 	public boolean isDirty(
 			Object old,
 			Object current,
 			boolean[] checkable,
-			SessionImplementor session) throws HibernateException {
+			SharedSessionContractImplementor session) throws HibernateException {
 		if ( isAlwaysDirtyChecked() ) {
 			return isDirty( old, current, session );
 		}

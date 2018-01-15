@@ -1,25 +1,8 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2008-2011, Red Hat Inc. or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Inc.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.action.internal;
 
@@ -29,7 +12,7 @@ import org.hibernate.AssertionFailure;
 import org.hibernate.action.spi.AfterTransactionCompletionProcess;
 import org.hibernate.action.spi.BeforeTransactionCompletionProcess;
 import org.hibernate.action.spi.Executable;
-import org.hibernate.engine.spi.SessionImplementor;
+import org.hibernate.engine.spi.SharedSessionContractImplementor;
 import org.hibernate.event.service.spi.EventListenerGroup;
 import org.hibernate.event.service.spi.EventListenerRegistry;
 import org.hibernate.event.spi.EventSource;
@@ -51,8 +34,10 @@ public abstract class EntityAction
 	private final Serializable id;
 
 	private transient Object instance;
-	private transient SessionImplementor session;
+	private transient SharedSessionContractImplementor session;
 	private transient EntityPersister persister;
+
+	private transient boolean veto;
 
 	/**
 	 * Instantiate an action.
@@ -62,12 +47,20 @@ public abstract class EntityAction
 	 * @param instance The entity instance
 	 * @param persister The entity persister
 	 */
-	protected EntityAction(SessionImplementor session, Serializable id, Object instance, EntityPersister persister) {
+	protected EntityAction(SharedSessionContractImplementor session, Serializable id, Object instance, EntityPersister persister) {
 		this.entityName = persister.getEntityName();
 		this.id = id;
 		this.instance = instance;
 		this.session = session;
 		this.persister = persister;
+	}
+
+	public boolean isVeto() {
+		return veto;
+	}
+
+	public void setVeto(boolean veto) {
+		this.veto = veto;
 	}
 
 	@Override
@@ -84,8 +77,8 @@ public abstract class EntityAction
 
 	protected abstract boolean hasPostCommitEventListeners();
 
-	public boolean needsAfterTransactionCompletion() {
-		return persister.hasCache() || hasPostCommitEventListeners();
+	protected boolean needsAfterTransactionCompletion() {
+		return persister.canWriteToCache() || hasPostCommitEventListeners();
 	}
 
 	/**
@@ -104,16 +97,16 @@ public abstract class EntityAction
 	 */
 	public final Serializable getId() {
 		if ( id instanceof DelayedPostInsertIdentifier ) {
-			Serializable eeId = session.getPersistenceContext().getEntry( instance ).getId();
+			final Serializable eeId = session.getPersistenceContext().getEntry( instance ).getId();
 			return eeId instanceof DelayedPostInsertIdentifier ? null : eeId;
 		}
 		return id;
 	}
 
 	public final DelayedPostInsertIdentifier getDelayedId() {
-		return DelayedPostInsertIdentifier.class.isInstance( id ) ?
-				DelayedPostInsertIdentifier.class.cast( id ) :
-				null;
+		return DelayedPostInsertIdentifier.class.isInstance( id )
+				? DelayedPostInsertIdentifier.class.cast( id )
+				: null;
 	}
 
 	/**
@@ -130,7 +123,7 @@ public abstract class EntityAction
 	 *
 	 * @return The session from which this action originated.
 	 */
-	public final SessionImplementor getSession() {
+	public final SharedSessionContractImplementor getSession() {
 		return session;
 	}
 
@@ -160,9 +153,9 @@ public abstract class EntityAction
 
 	@Override
 	public int compareTo(Object other) {
-		EntityAction action = ( EntityAction ) other;
+		final EntityAction action = (EntityAction) other;
 		//sort first by entity name
-		int roleComparison = entityName.compareTo( action.entityName );
+		final int roleComparison = entityName.compareTo( action.entityName );
 		if ( roleComparison != 0 ) {
 			return roleComparison;
 		}
@@ -177,7 +170,8 @@ public abstract class EntityAction
 	 *
 	 * @param session The session being deserialized
 	 */
-	public void afterDeserialize(SessionImplementor session) {
+	@Override
+	public void afterDeserialize(SharedSessionContractImplementor session) {
 		if ( this.session != null || this.persister != null ) {
 			throw new IllegalStateException( "already attached to a session." );
 		}
@@ -185,7 +179,7 @@ public abstract class EntityAction
 		// guard against NullPointerException
 		if ( session != null ) {
 			this.session = session;
-			this.persister = session.getFactory().getEntityPersister( entityName );
+			this.persister = session.getFactory().getMetamodel().entityPersister( entityName );
 			this.instance = session.getPersistenceContext().getEntity( session.generateEntityKey( id, persister ) );
 		}
 	}
@@ -202,4 +196,3 @@ public abstract class EntityAction
 		return (EventSource) getSession();
 	}
 }
-

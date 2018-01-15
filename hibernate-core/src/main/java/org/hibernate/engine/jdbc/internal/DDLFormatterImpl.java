@@ -1,28 +1,12 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2008-2011, Red Hat Inc. or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Inc.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.engine.jdbc.internal;
 
+import java.util.Locale;
 import java.util.StringTokenizer;
 
 import org.hibernate.internal.util.StringHelper;
@@ -34,46 +18,51 @@ import org.hibernate.internal.util.StringHelper;
  * @author Steve Ebersole
  */
 public class DDLFormatterImpl implements Formatter {
+
+	private static final String INITIAL_LINE = System.lineSeparator() + "    ";
+	private static final String OTHER_LINES = System.lineSeparator() + "       ";
 	/**
-	 * Format an SQL statement using simple rules<ul>
-	 * <li>Insert newline after each comma</li>
-	 * <li>Indent three spaces after each inserted newline</li>
-	 * </ul>
-	 * If the statement contains single/double quotes return unchanged,
-	 * it is too complex and could be broken by simple formatting.
-	 * 
-	 * @param sql The statement to be fornmatted.
+	 * Singleton access
 	 */
+	public static final DDLFormatterImpl INSTANCE = new DDLFormatterImpl();
+
+	@Override
 	public String format(String sql) {
-        if ( StringHelper.isEmpty( sql ) ) return sql;
-		if ( sql.toLowerCase().startsWith( "create table" ) ) {
+		if ( StringHelper.isEmpty( sql ) ) {
+			return sql;
+		}
+
+		if ( sql.toLowerCase(Locale.ROOT).startsWith( "create table" ) ) {
 			return formatCreateTable( sql );
 		}
-		else if ( sql.toLowerCase().startsWith( "alter table" ) ) {
+		else if ( sql.toLowerCase(Locale.ROOT).startsWith( "create" ) ) {
+			return sql;
+		}
+		else if ( sql.toLowerCase(Locale.ROOT).startsWith( "alter table" ) ) {
 			return formatAlterTable( sql );
 		}
-		else if ( sql.toLowerCase().startsWith( "comment on" ) ) {
+		else if ( sql.toLowerCase(Locale.ROOT).startsWith( "comment on" ) ) {
 			return formatCommentOn( sql );
 		}
 		else {
-			return "\n    " + sql;
+			return INITIAL_LINE + sql;
 		}
 	}
 
 	private String formatCommentOn(String sql) {
-		StringBuilder result = new StringBuilder( 60 ).append( "\n    " );
-		StringTokenizer tokens = new StringTokenizer( sql, " '[]\"", true );
+		final StringBuilder result = new StringBuilder( 60 ).append( INITIAL_LINE );
+		final StringTokenizer tokens = new StringTokenizer( sql, " '[]\"", true );
 
 		boolean quoted = false;
 		while ( tokens.hasMoreTokens() ) {
-			String token = tokens.nextToken();
+			final String token = tokens.nextToken();
 			result.append( token );
 			if ( isQuote( token ) ) {
 				quoted = !quoted;
 			}
 			else if ( !quoted ) {
 				if ( "is".equals( token ) ) {
-					result.append( "\n       " );
+					result.append( OTHER_LINES );
 				}
 			}
 		}
@@ -82,18 +71,18 @@ public class DDLFormatterImpl implements Formatter {
 	}
 
 	private String formatAlterTable(String sql) {
-		StringBuilder result = new StringBuilder( 60 ).append( "\n    " );
-		StringTokenizer tokens = new StringTokenizer( sql, " (,)'[]\"", true );
+		final StringBuilder result = new StringBuilder( 60 ).append( INITIAL_LINE );
+		final StringTokenizer tokens = new StringTokenizer( sql, " (,)'[]\"", true );
 
 		boolean quoted = false;
 		while ( tokens.hasMoreTokens() ) {
-			String token = tokens.nextToken();
+			final String token = tokens.nextToken();
 			if ( isQuote( token ) ) {
 				quoted = !quoted;
 			}
 			else if ( !quoted ) {
 				if ( isBreak( token ) ) {
-					result.append( "\n        " );
+					result.append( OTHER_LINES );
 				}
 			}
 			result.append( token );
@@ -103,13 +92,13 @@ public class DDLFormatterImpl implements Formatter {
 	}
 
 	private String formatCreateTable(String sql) {
-		StringBuilder result = new StringBuilder( 60 ).append( "\n    " );
-		StringTokenizer tokens = new StringTokenizer( sql, "(,)'[]\"", true );
+		final StringBuilder result = new StringBuilder( 60 ).append( INITIAL_LINE );
+		final StringTokenizer tokens = new StringTokenizer( sql, "(,)'[]\"", true );
 
 		int depth = 0;
 		boolean quoted = false;
 		while ( tokens.hasMoreTokens() ) {
-			String token = tokens.nextToken();
+			final String token = tokens.nextToken();
 			if ( isQuote( token ) ) {
 				quoted = !quoted;
 				result.append( token );
@@ -121,17 +110,17 @@ public class DDLFormatterImpl implements Formatter {
 				if ( ")".equals( token ) ) {
 					depth--;
 					if ( depth == 0 ) {
-						result.append( "\n    " );
+						result.append( INITIAL_LINE );
 					}
 				}
 				result.append( token );
 				if ( ",".equals( token ) && depth == 1 ) {
-					result.append( "\n       " );
+					result.append( OTHER_LINES );
 				}
 				if ( "(".equals( token ) ) {
 					depth++;
 					if ( depth == 1 ) {
-						result.append( "\n        " );
+						result.append( OTHER_LINES );
 					}
 				}
 			}

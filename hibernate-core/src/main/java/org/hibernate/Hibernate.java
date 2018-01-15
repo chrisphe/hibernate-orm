@@ -1,36 +1,22 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2010, Red Hat Inc. or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Inc.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate;
 
 import java.util.Iterator;
 
-import org.hibernate.bytecode.instrumentation.internal.FieldInterceptionHelper;
-import org.hibernate.bytecode.instrumentation.spi.FieldInterceptor;
+import org.hibernate.bytecode.enhance.spi.interceptor.LazyAttributeLoadingInterceptor;
 import org.hibernate.collection.spi.PersistentCollection;
 import org.hibernate.engine.HibernateIterator;
 import org.hibernate.engine.jdbc.LobCreator;
+import org.hibernate.engine.jdbc.spi.JdbcServices;
+import org.hibernate.engine.spi.PersistentAttributeInterceptable;
+import org.hibernate.engine.spi.PersistentAttributeInterceptor;
 import org.hibernate.engine.spi.SessionImplementor;
+import org.hibernate.engine.spi.SharedSessionContractImplementor;
 import org.hibernate.proxy.HibernateProxy;
 import org.hibernate.proxy.LazyInitializer;
 
@@ -70,8 +56,9 @@ public final class Hibernate {
 		if ( proxy == null ) {
 			return;
 		}
-		else if ( proxy instanceof HibernateProxy ) {
-			( ( HibernateProxy ) proxy ).getHibernateLazyInitializer().initialize();
+
+		if ( proxy instanceof HibernateProxy ) {
+			( (HibernateProxy) proxy ).getHibernateLazyInitializer().initialize();
 		}
 		else if ( proxy instanceof PersistentCollection ) {
 			( (PersistentCollection) proxy ).forceInitialization();
@@ -84,12 +71,13 @@ public final class Hibernate {
 	 * @param proxy a persistable object, proxy, persistent collection or <tt>null</tt>
 	 * @return true if the argument is already initialized, or is not a proxy or collection
 	 */
+	@SuppressWarnings("SimplifiableIfStatement")
 	public static boolean isInitialized(Object proxy) {
 		if ( proxy instanceof HibernateProxy ) {
-			return !( ( HibernateProxy ) proxy ).getHibernateLazyInitializer().isUninitialized();
+			return !( (HibernateProxy) proxy ).getHibernateLazyInitializer().isUninitialized();
 		}
 		else if ( proxy instanceof PersistentCollection ) {
-			return ( ( PersistentCollection ) proxy ).wasInitialized();
+			return ( (PersistentCollection) proxy ).wasInitialized();
 		}
 		else {
 			return true;
@@ -106,7 +94,7 @@ public final class Hibernate {
 	 */
 	public static Class getClass(Object proxy) {
 		if ( proxy instanceof HibernateProxy ) {
-			return ( ( HibernateProxy ) proxy ).getHibernateLazyInitializer()
+			return ( (HibernateProxy) proxy ).getHibernateLazyInitializer()
 					.getImplementation()
 					.getClass();
 		}
@@ -115,28 +103,59 @@ public final class Hibernate {
 		}
 	}
 
+	/**
+	 * Obtain a lob creator for the given session.
+	 *
+	 * @param session The session for which to obtain a lob creator
+	 *
+	 * @return The log creator reference
+	 */
 	public static LobCreator getLobCreator(Session session) {
 		return getLobCreator( (SessionImplementor) session );
 	}
 
-	public static LobCreator getLobCreator(SessionImplementor session) {
+	/**
+	 * Obtain a lob creator for the given session.
+	 *
+	 * @param session The session for which to obtain a lob creator
+	 *
+	 * @return The log creator reference
+	 */
+	public static LobCreator getLobCreator(SharedSessionContractImplementor session) {
 		return session.getFactory()
-				.getJdbcServices()
+				.getServiceRegistry()
+				.getService( JdbcServices.class )
 				.getLobCreator( session );
 	}
 
 	/**
-	 * Close an <tt>Iterator</tt> created by <tt>iterate()</tt> immediately,
+	 * Obtain a lob creator for the given session.
+	 *
+	 * @param session The session for which to obtain a lob creator
+	 *
+	 * @return The log creator reference
+	 */
+	public static LobCreator getLobCreator(SessionImplementor session) {
+		return session.getFactory()
+				.getServiceRegistry()
+				.getService( JdbcServices.class )
+				.getLobCreator( session );
+	}
+
+	/**
+	 * Close an {@link Iterator} instances obtained from {@link org.hibernate.Query#iterate()} immediately
 	 * instead of waiting until the session is closed or disconnected.
 	 *
-	 * @param iterator an <tt>Iterator</tt> created by <tt>iterate()</tt>
-	 * @throws HibernateException
-	 * @see org.hibernate.Query#iterate
+	 * @param iterator an Iterator created by iterate()
+	 *
+	 * @throws HibernateException Indicates a problem closing the Hibernate iterator.
+	 * @throws IllegalArgumentException If the Iterator is not a "Hibernate Iterator".
+	 *
 	 * @see Query#iterate()
 	 */
 	public static void close(Iterator iterator) throws HibernateException {
 		if ( iterator instanceof HibernateIterator ) {
-			( ( HibernateIterator ) iterator ).close();
+			( (HibernateIterator) iterator ).close();
 		}
 		else {
 			throw new IllegalArgumentException( "not a Hibernate iterator" );
@@ -152,10 +171,9 @@ public final class Hibernate {
 	 * @return true if the named property of the object is not listed as uninitialized; false otherwise
 	 */
 	public static boolean isPropertyInitialized(Object proxy, String propertyName) {
-		
-		Object entity;
+		final Object entity;
 		if ( proxy instanceof HibernateProxy ) {
-			LazyInitializer li = ( ( HibernateProxy ) proxy ).getHibernateLazyInitializer();
+			final LazyInitializer li = ( (HibernateProxy) proxy ).getHibernateLazyInitializer();
 			if ( li.isUninitialized() ) {
 				return false;
 			}
@@ -167,14 +185,31 @@ public final class Hibernate {
 			entity = proxy;
 		}
 
-		if ( FieldInterceptionHelper.isInstrumented( entity ) ) {
-			FieldInterceptor interceptor = FieldInterceptionHelper.extractFieldInterceptor( entity );
-			return interceptor == null || interceptor.isInitialized( propertyName );
+		if ( entity instanceof PersistentAttributeInterceptable ) {
+			PersistentAttributeInterceptor interceptor = ( (PersistentAttributeInterceptable) entity ).$$_hibernate_getInterceptor();
+			if ( interceptor != null && interceptor instanceof LazyAttributeLoadingInterceptor ) {
+				return ( (LazyAttributeLoadingInterceptor) interceptor ).isAttributeLoaded( propertyName );
+			}
 		}
-		else {
-			return true;
-		}
-		
+
+		return true;
 	}
 
+    /**
+     * Unproxies a {@link HibernateProxy}. If the proxy is uninitialized, it automatically triggers an initialization.
+     * In case the supplied object is null or not a proxy, the object will be returned as-is.
+     *
+     * @param proxy the {@link HibernateProxy} to be unproxied
+     * @return the proxy's underlying implementation object, or the supplied object otherwise
+     */
+	public static Object unproxy(Object proxy) {
+		if ( proxy instanceof HibernateProxy ) {
+			HibernateProxy hibernateProxy = (HibernateProxy) proxy;
+			LazyInitializer initializer = hibernateProxy.getHibernateLazyInitializer();
+			return initializer.getImplementation();
+		}
+		else {
+			return proxy;
+		}
+	}
 }

@@ -1,29 +1,17 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * JBoss, Home of Professional Open Source
- * Copyright 2011 Red Hat Inc. and/or its affiliates and other contributors
- * as indicated by the @authors tag. All rights reserved.
- * See the copyright.txt in the distribution for a
- * full listing of individual contributors.
- *
- * This copyrighted material is made available to anyone wishing to use,
- * modify, copy, or redistribute it subject to the terms and conditions
- * of the GNU Lesser General Public License, v. 2.1.
- * This program is distributed in the hope that it will be useful, but WITHOUT A
- * WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
- * PARTICULAR PURPOSE.  See the GNU Lesser General Public License for more details.
- * You should have received a copy of the GNU Lesser General Public License,
- * v.2.1 along with this distribution; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
- * MA  02110-1301, USA.
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.test.cfg.persister;
 
 import java.io.Serializable;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.Collections;
 import java.util.Comparator;
+import java.util.List;
 import java.util.Map;
 
 import org.hibernate.EntityMode;
@@ -31,30 +19,38 @@ import org.hibernate.HibernateException;
 import org.hibernate.LockMode;
 import org.hibernate.LockOptions;
 import org.hibernate.MappingException;
-import org.hibernate.bytecode.spi.EntityInstrumentationMetadata;
+import org.hibernate.bytecode.spi.BytecodeEnhancementMetadata;
 import org.hibernate.cache.spi.access.CollectionRegionAccessStrategy;
 import org.hibernate.cache.spi.access.EntityRegionAccessStrategy;
 import org.hibernate.cache.spi.access.NaturalIdRegionAccessStrategy;
+import org.hibernate.cache.spi.entry.CacheEntry;
 import org.hibernate.cache.spi.entry.CacheEntryStructure;
+import org.hibernate.cfg.NotYetImplementedException;
 import org.hibernate.collection.spi.PersistentCollection;
+import org.hibernate.engine.internal.MutableEntityEntryFactory;
 import org.hibernate.engine.spi.CascadeStyle;
-import org.hibernate.engine.spi.Mapping;
+import org.hibernate.engine.spi.EntityEntryFactory;
 import org.hibernate.engine.spi.SessionFactoryImplementor;
-import org.hibernate.engine.spi.SessionImplementor;
+import org.hibernate.engine.spi.SharedSessionContractImplementor;
 import org.hibernate.engine.spi.ValueInclusion;
 import org.hibernate.id.IdentifierGenerator;
+import org.hibernate.internal.FilterAliasGenerator;
 import org.hibernate.mapping.Collection;
 import org.hibernate.mapping.PersistentClass;
 import org.hibernate.metadata.ClassMetadata;
 import org.hibernate.metadata.CollectionMetadata;
-import org.hibernate.metamodel.binding.EntityBinding;
-import org.hibernate.metamodel.binding.PluralAttributeBinding;
 import org.hibernate.persister.collection.CollectionPersister;
 import org.hibernate.persister.entity.EntityPersister;
+import org.hibernate.persister.entity.MultiLoadOptions;
 import org.hibernate.persister.spi.PersisterClassResolver;
+import org.hibernate.persister.spi.PersisterCreationContext;
+import org.hibernate.persister.walking.spi.AttributeDefinition;
+import org.hibernate.persister.walking.spi.CollectionElementDefinition;
+import org.hibernate.persister.walking.spi.CollectionIndexDefinition;
+import org.hibernate.persister.walking.spi.EntityIdentifierDefinition;
+import org.hibernate.tuple.entity.BytecodeEnhancementMetadataNonPojoImpl;
 import org.hibernate.tuple.entity.EntityMetamodel;
 import org.hibernate.tuple.entity.EntityTuplizer;
-import org.hibernate.tuple.entity.NonPojoInstrumentationMetadata;
 import org.hibernate.type.CollectionType;
 import org.hibernate.type.Type;
 import org.hibernate.type.VersionType;
@@ -69,27 +65,17 @@ public class GoofyPersisterClassProvider implements PersisterClassResolver {
 	}
 
 	@Override
-	public Class<? extends EntityPersister> getEntityPersisterClass(EntityBinding metadata) {
-		return NoopEntityPersister.class;
-	}
-
-	@Override
 	public Class<? extends CollectionPersister> getCollectionPersisterClass(Collection metadata) {
-		return NoopCollectionPersister.class;
-	}
-
-	@Override
-	public Class<? extends CollectionPersister> getCollectionPersisterClass(PluralAttributeBinding metadata) {
 		return NoopCollectionPersister.class;
 	}
 
 	public static class NoopEntityPersister implements EntityPersister {
 
-		public NoopEntityPersister(org.hibernate.mapping.PersistentClass persistentClass,
-								   org.hibernate.cache.spi.access.EntityRegionAccessStrategy strategy,
-								   NaturalIdRegionAccessStrategy naturalIdRegionAccessStrategy,
-								   SessionFactoryImplementor sf,
-								   Mapping mapping) {
+		public NoopEntityPersister(
+				final PersistentClass persistentClass,
+				final EntityRegionAccessStrategy cacheAccessStrategy,
+				final NaturalIdRegionAccessStrategy naturalIdRegionAccessStrategy,
+				final PersisterCreationContext creationContext) {
 			throw new GoofyException(NoopEntityPersister.class);
 		}
 
@@ -104,8 +90,12 @@ public class GoofyPersisterClassProvider implements PersisterClassResolver {
 		}
 
 		@Override
-		public EntityInstrumentationMetadata getInstrumentationMetadata() {
-			return new NonPojoInstrumentationMetadata( null );
+		public BytecodeEnhancementMetadata getInstrumentationMetadata() {
+			return new BytecodeEnhancementMetadataNonPojoImpl( null );
+		}
+
+		@Override
+		public void generateEntityDefinition() {
 		}
 
 		@Override
@@ -116,6 +106,11 @@ public class GoofyPersisterClassProvider implements PersisterClassResolver {
 		@Override
 		public SessionFactoryImplementor getFactory() {
 			return null;
+		}
+
+		@Override
+		public EntityEntryFactory getEntityEntryFactory() {
+			return MutableEntityEntryFactory.INSTANCE;
 		}
 
 		@Override
@@ -194,12 +189,12 @@ public class GoofyPersisterClassProvider implements PersisterClassResolver {
 		}
 
 		@Override
-		public int[] findDirty(Object[] currentState, Object[] previousState, Object owner, SessionImplementor session) {
+		public int[] findDirty(Object[] currentState, Object[] previousState, Object owner, SharedSessionContractImplementor session) {
 			return new int[0];
 		}
 
 		@Override
-		public int[] findModified(Object[] old, Object[] current, Object object, SessionImplementor session) {
+		public int[] findModified(Object[] old, Object[] current, Object object, SharedSessionContractImplementor session) {
 			return new int[0];
 		}
 
@@ -244,13 +239,13 @@ public class GoofyPersisterClassProvider implements PersisterClassResolver {
 		}
 
 		@Override
-		public Object[] getNaturalIdentifierSnapshot(Serializable id, SessionImplementor session) {
+		public Object[] getNaturalIdentifierSnapshot(Serializable id, SharedSessionContractImplementor session) {
 			return new Object[0];
 		}
 
 		@Override
-		public Serializable loadEntityIdByNaturalId(Object[] naturalIdValues, LockOptions lockOptions,
-				SessionImplementor session) {
+		public Serializable loadEntityIdByNaturalId(
+				Object[] naturalIdValues, LockOptions lockOptions, SharedSessionContractImplementor session) {
 			return null;
 		}
 
@@ -265,38 +260,53 @@ public class GoofyPersisterClassProvider implements PersisterClassResolver {
 		}
 
 		@Override
-		public Object load(Serializable id, Object optionalObject, LockMode lockMode, SessionImplementor session) {
+		public Object load(Serializable id, Object optionalObject, LockMode lockMode, SharedSessionContractImplementor session) {
 			return null;
 		}
 
 		@Override
-		public Object load(Serializable id, Object optionalObject, LockOptions lockOptions, SessionImplementor session) {
+		public Object load(Serializable id, Object optionalObject, LockOptions lockOptions, SharedSessionContractImplementor session) {
 			return null;
 		}
 
 		@Override
-		public void lock(Serializable id, Object version, Object object, LockMode lockMode, SessionImplementor session) {
+		public List multiLoad(
+				Serializable[] ids, SharedSessionContractImplementor session, MultiLoadOptions loadOptions) {
+			return Collections.emptyList();
 		}
 
 		@Override
-		public void lock(Serializable id, Object version, Object object, LockOptions lockOptions, SessionImplementor session) {
+		public void lock(Serializable id, Object version, Object object, LockMode lockMode, SharedSessionContractImplementor session) {
 		}
 
 		@Override
-		public void insert(Serializable id, Object[] fields, Object object, SessionImplementor session) {
+		public void lock(Serializable id, Object version, Object object, LockOptions lockOptions, SharedSessionContractImplementor session) {
 		}
 
 		@Override
-		public Serializable insert(Object[] fields, Object object, SessionImplementor session) {
+		public void insert(Serializable id, Object[] fields, Object object, SharedSessionContractImplementor session) {
+		}
+
+		@Override
+		public Serializable insert(Object[] fields, Object object, SharedSessionContractImplementor session) {
 			return null;
 		}
 
 		@Override
-		public void delete(Serializable id, Object version, Object object, SessionImplementor session) {
+		public void delete(Serializable id, Object version, Object object, SharedSessionContractImplementor session) {
 		}
 
 		@Override
-		public void update(Serializable id, Object[] fields, int[] dirtyFields, boolean hasDirtyCollection, Object[] oldFields, Object oldVersion, Object object, Object rowId, SessionImplementor session) {
+		public void update(
+				Serializable id,
+				Object[] fields,
+				int[] dirtyFields,
+				boolean hasDirtyCollection,
+				Object[] oldFields,
+				Object oldVersion,
+				Object object,
+				Object rowId,
+				SharedSessionContractImplementor session) {
 		}
 
 		@Override
@@ -375,6 +385,16 @@ public class GoofyPersisterClassProvider implements PersisterClassResolver {
 		}
 
 		@Override
+		public boolean canReadFromCache() {
+			return false;
+		}
+
+		@Override
+		public boolean canWriteToCache() {
+			return false;
+		}
+
+		@Override
 		public boolean hasCache() {
 			return false;
 		}
@@ -400,6 +420,12 @@ public class GoofyPersisterClassProvider implements PersisterClassResolver {
 		}
 
 		@Override
+		public CacheEntry buildCacheEntry(
+				Object entity, Object[] state, Object version, SharedSessionContractImplementor session) {
+			return null;
+		}
+
+		@Override
 		public ClassMetadata getClassMetadata() {
 			return null;
 		}
@@ -415,17 +441,22 @@ public class GoofyPersisterClassProvider implements PersisterClassResolver {
 		}
 
 		@Override
-		public Object[] getDatabaseSnapshot(Serializable id, SessionImplementor session) throws HibernateException {
+		public Object[] getDatabaseSnapshot(Serializable id, SharedSessionContractImplementor session) throws HibernateException {
 			return new Object[0];
 		}
 
 		@Override
-		public Object getCurrentVersion(Serializable id, SessionImplementor session) throws HibernateException {
+		public Serializable getIdByUniqueKey(Serializable key, String uniquePropertyName, SharedSessionContractImplementor session) {
+			throw new UnsupportedOperationException( "not supported" );
+		}
+
+		@Override
+		public Object getCurrentVersion(Serializable id, SharedSessionContractImplementor session) throws HibernateException {
 			return null;
 		}
 
 		@Override
-		public Object forceVersionIncrement(Serializable id, Object currentVersion, SessionImplementor session) {
+		public Object forceVersionIncrement(Serializable id, Object currentVersion, SharedSessionContractImplementor session) {
 			return null;
 		}
 
@@ -450,34 +481,35 @@ public class GoofyPersisterClassProvider implements PersisterClassResolver {
 		}
 
 		@Override
-		public void afterInitialize(Object entity, boolean lazyPropertiesAreUnfetched, SessionImplementor session) {
+		public void afterInitialize(Object entity, SharedSessionContractImplementor session) {
+
 		}
 
 		@Override
-		public void afterReassociate(Object entity, SessionImplementor session) {
+		public void afterReassociate(Object entity, SharedSessionContractImplementor session) {
 		}
 
 		@Override
-		public Object createProxy(Serializable id, SessionImplementor session) throws HibernateException {
+		public Object createProxy(Serializable id, SharedSessionContractImplementor session) throws HibernateException {
 			return null;
 		}
 
 		@Override
-		public Boolean isTransient(Object object, SessionImplementor session) throws HibernateException {
+		public Boolean isTransient(Object object, SharedSessionContractImplementor session) throws HibernateException {
 			return null;
 		}
 
 		@Override
-		public Object[] getPropertyValuesToInsert(Object object, Map mergeMap, SessionImplementor session) {
+		public Object[] getPropertyValuesToInsert(Object object, Map mergeMap, SharedSessionContractImplementor session) {
 			return new Object[0];
 		}
 
 		@Override
-		public void processInsertGeneratedProperties(Serializable id, Object entity, Object[] state, SessionImplementor session) {
+		public void processInsertGeneratedProperties(Serializable id, Object entity, Object[] state, SharedSessionContractImplementor session) {
 		}
 
 		@Override
-		public void processUpdateGeneratedProperties(Serializable id, Object entity, Object[] state, SessionImplementor session) {
+		public void processUpdateGeneratedProperties(Serializable id, Object entity, Object[] state, SharedSessionContractImplementor session) {
 		}
 
 		@Override
@@ -524,12 +556,12 @@ public class GoofyPersisterClassProvider implements PersisterClassResolver {
 		}
 
 		@Override
-		public Serializable getIdentifier(Object entity, SessionImplementor session) {
+		public Serializable getIdentifier(Object entity, SharedSessionContractImplementor session) {
 			return null;
 		}
 
 		@Override
-		public void setIdentifier(Object entity, Serializable id, SessionImplementor session) {
+		public void setIdentifier(Object entity, Serializable id, SharedSessionContractImplementor session) {
 		}
 
 		@Override
@@ -538,7 +570,7 @@ public class GoofyPersisterClassProvider implements PersisterClassResolver {
 		}
 
 		@Override
-		public Object instantiate(Serializable id, SessionImplementor session) {
+		public Object instantiate(Serializable id, SharedSessionContractImplementor session) {
 			return null;
 		}
 
@@ -553,25 +585,56 @@ public class GoofyPersisterClassProvider implements PersisterClassResolver {
 		}
 
 		@Override
-		public void resetIdentifier(Object entity, Serializable currentId, Object currentVersion, SessionImplementor session) {
+		public void resetIdentifier(Object entity, Serializable currentId, Object currentVersion, SharedSessionContractImplementor session) {
 		}
 
 		@Override
 		public EntityPersister getSubclassEntityPersister(Object instance, SessionFactoryImplementor factory) {
 			return null;
 		}
+
+		@Override
+		public FilterAliasGenerator getFilterAliasGenerator(String rootAlias) {
+			// TODO Auto-generated method stub
+			return null;
+		}
+
+		@Override
+		public EntityPersister getEntityPersister() {
+			return this;
+		}
+
+		@Override
+		public EntityIdentifierDefinition getEntityKeyDefinition() {
+			return null;  //To change body of implemented methods use File | Settings | File Templates.
+		}
+
+		@Override
+		public Iterable<AttributeDefinition> getAttributes() {
+			throw new NotYetImplementedException();
+		}
+
+        @Override
+        public int[] resolveAttributeIndexes(String[] attributeNames) {
+            return null;
+        }
+
+		@Override
+		public boolean canUseReferenceCacheEntries() {
+			return false;
+		}
 	}
 
 	public static class NoopCollectionPersister implements CollectionPersister {
 
-		public NoopCollectionPersister(org.hibernate.mapping.Collection collection,
-									   org.hibernate.cache.spi.access.CollectionRegionAccessStrategy strategy,
-									   org.hibernate.cfg.Configuration configuration,
-									   SessionFactoryImplementor sf) {
+		public NoopCollectionPersister(
+				Collection collectionBinding,
+				CollectionRegionAccessStrategy cacheAccessStrategy,
+				PersisterCreationContext creationContext) {
 			throw new GoofyException(NoopCollectionPersister.class);
 		}
 
-		public void initialize(Serializable key, SessionImplementor session) throws HibernateException {
+		public void initialize(Serializable key, SharedSessionContractImplementor session) throws HibernateException {
 			//To change body of implemented methods use File | Settings | File Templates.
 		}
 
@@ -587,8 +650,23 @@ public class GoofyPersisterClassProvider implements PersisterClassResolver {
 			return null;  //To change body of implemented methods use File | Settings | File Templates.
 		}
 
+		@Override
+		public CollectionPersister getCollectionPersister() {
+			return this;
+		}
+
 		public CollectionType getCollectionType() {
-			return null;  //To change body of implemented methods use File | Settings | File Templates.
+			throw new NotYetImplementedException();
+		}
+
+		@Override
+		public CollectionIndexDefinition getIndexDefinition() {
+			throw new NotYetImplementedException();
+		}
+
+		@Override
+		public CollectionElementDefinition getElementDefinition() {
+			throw new NotYetImplementedException();
 		}
 
 		public Type getKeyType() {
@@ -607,22 +685,22 @@ public class GoofyPersisterClassProvider implements PersisterClassResolver {
 			return null;  //To change body of implemented methods use File | Settings | File Templates.
 		}
 
-		public Object readKey(ResultSet rs, String[] keyAliases, SessionImplementor session)
+		public Object readKey(ResultSet rs, String[] keyAliases, SharedSessionContractImplementor session)
 				throws HibernateException, SQLException {
 			return null;  //To change body of implemented methods use File | Settings | File Templates.
 		}
 
-		public Object readElement(ResultSet rs, Object owner, String[] columnAliases, SessionImplementor session)
+		public Object readElement(ResultSet rs, Object owner, String[] columnAliases, SharedSessionContractImplementor session)
 				throws HibernateException, SQLException {
 			return null;  //To change body of implemented methods use File | Settings | File Templates.
 		}
 
-		public Object readIndex(ResultSet rs, String[] columnAliases, SessionImplementor session)
+		public Object readIndex(ResultSet rs, String[] columnAliases, SharedSessionContractImplementor session)
 				throws HibernateException, SQLException {
 			return null;  //To change body of implemented methods use File | Settings | File Templates.
 		}
 
-		public Object readIdentifier(ResultSet rs, String columnAlias, SessionImplementor session)
+		public Object readIdentifier(ResultSet rs, String columnAlias, SharedSessionContractImplementor session)
 				throws HibernateException, SQLException {
 			return null;  //To change body of implemented methods use File | Settings | File Templates.
 		}
@@ -659,26 +737,26 @@ public class GoofyPersisterClassProvider implements PersisterClassResolver {
 			return false;  //To change body of implemented methods use File | Settings | File Templates.
 		}
 
-		public void remove(Serializable id, SessionImplementor session) throws HibernateException {
+		public void remove(Serializable id, SharedSessionContractImplementor session) throws HibernateException {
 			//To change body of implemented methods use File | Settings | File Templates.
 		}
 
-		public void recreate(PersistentCollection collection, Serializable key, SessionImplementor session)
+		public void recreate(PersistentCollection collection, Serializable key, SharedSessionContractImplementor session)
 				throws HibernateException {
 			//To change body of implemented methods use File | Settings | File Templates.
 		}
 
-		public void deleteRows(PersistentCollection collection, Serializable key, SessionImplementor session)
+		public void deleteRows(PersistentCollection collection, Serializable key, SharedSessionContractImplementor session)
 				throws HibernateException {
 			//To change body of implemented methods use File | Settings | File Templates.
 		}
 
-		public void updateRows(PersistentCollection collection, Serializable key, SessionImplementor session)
+		public void updateRows(PersistentCollection collection, Serializable key, SharedSessionContractImplementor session)
 				throws HibernateException {
 			//To change body of implemented methods use File | Settings | File Templates.
 		}
 
-		public void insertRows(PersistentCollection collection, Serializable key, SessionImplementor session)
+		public void insertRows(PersistentCollection collection, Serializable key, SharedSessionContractImplementor session)
 				throws HibernateException {
 			//To change body of implemented methods use File | Settings | File Templates.
 		}
@@ -731,18 +809,6 @@ public class GoofyPersisterClassProvider implements PersisterClassResolver {
 			return false;  //To change body of implemented methods use File | Settings | File Templates.
 		}
 
-		public String getNodeName() {
-			return null;  //To change body of implemented methods use File | Settings | File Templates.
-		}
-
-		public String getElementNodeName() {
-			return null;  //To change body of implemented methods use File | Settings | File Templates.
-		}
-
-		public String getIndexNodeName() {
-			return null;  //To change body of implemented methods use File | Settings | File Templates.
-		}
-
 		public void postInstantiate() throws MappingException {
 			//To change body of implemented methods use File | Settings | File Templates.
 		}
@@ -751,7 +817,7 @@ public class GoofyPersisterClassProvider implements PersisterClassResolver {
 			return null;  //To change body of implemented methods use File | Settings | File Templates.
 		}
 
-		public boolean isAffectedByEnabledFilters(SessionImplementor session) {
+		public boolean isAffectedByEnabledFilters(SharedSessionContractImplementor session) {
 			return false;  //To change body of implemented methods use File | Settings | File Templates.
 		}
 
@@ -775,20 +841,35 @@ public class GoofyPersisterClassProvider implements PersisterClassResolver {
 			return false;  //To change body of implemented methods use File | Settings | File Templates.
 		}
 
-		public int getSize(Serializable key, SessionImplementor session) {
+		public int getSize(Serializable key, SharedSessionContractImplementor session) {
 			return 0;  //To change body of implemented methods use File | Settings | File Templates.
 		}
 
-		public boolean indexExists(Serializable key, Object index, SessionImplementor session) {
+		public boolean indexExists(Serializable key, Object index, SharedSessionContractImplementor session) {
 			return false;  //To change body of implemented methods use File | Settings | File Templates.
 		}
 
-		public boolean elementExists(Serializable key, Object element, SessionImplementor session) {
+		public boolean elementExists(Serializable key, Object element, SharedSessionContractImplementor session) {
 			return false;  //To change body of implemented methods use File | Settings | File Templates.
 		}
 
-		public Object getElementByIndex(Serializable key, Object index, SessionImplementor session, Object owner) {
+		public Object getElementByIndex(Serializable key, Object index, SharedSessionContractImplementor session, Object owner) {
 			return null;  //To change body of implemented methods use File | Settings | File Templates.
+		}
+
+		@Override
+		public int getBatchSize() {
+			return 0;
+		}
+
+		@Override
+		public String getMappedByProperty() {
+			return null;
+		}
+
+		@Override
+		public void processQueuedOps(PersistentCollection collection, Serializable key, SharedSessionContractImplementor session)
+				throws HibernateException {
 		}
 	}
 }

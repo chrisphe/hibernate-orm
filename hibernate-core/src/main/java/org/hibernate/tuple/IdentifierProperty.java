@@ -1,28 +1,11 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2008, Red Hat Middleware LLC or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Middleware LLC.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
- *
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.tuple;
+
 import org.hibernate.engine.spi.IdentifierValue;
 import org.hibernate.id.IdentifierGenerator;
 import org.hibernate.id.PostInsertIdentifierGenerator;
@@ -34,8 +17,7 @@ import org.hibernate.type.Type;
  *
  * @author Steve Ebersole
  */
-public class IdentifierProperty extends Property {
-
+public class IdentifierProperty extends AbstractAttribute implements IdentifierAttribute {
 	private boolean virtual;
 	private boolean embedded;
 	private IdentifierValue unsavedValue;
@@ -58,12 +40,11 @@ public class IdentifierProperty extends Property {
 	 */
 	public IdentifierProperty(
 			String name,
-			String node,
 			Type type,
 			boolean embedded,
 			IdentifierValue unsavedValue,
 			IdentifierGenerator identifierGenerator) {
-		super(name, node, type);
+		super( name, type );
 		this.virtual = false;
 		this.embedded = embedded;
 		this.hasIdentifierMapper = false;
@@ -82,12 +63,12 @@ public class IdentifierProperty extends Property {
 	 * @param identifierGenerator The generator to use for id value generation.
 	 */
 	public IdentifierProperty(
-	        Type type,
-	        boolean embedded,
+			Type type,
+			boolean embedded,
 			boolean hasIdentifierMapper,
 			IdentifierValue unsavedValue,
-	        IdentifierGenerator identifierGenerator) {
-		super(null, null, type);
+			IdentifierGenerator identifierGenerator) {
+		super( null, type );
 		this.virtual = true;
 		this.embedded = embedded;
 		this.hasIdentifierMapper = hasIdentifierMapper;
@@ -96,27 +77,38 @@ public class IdentifierProperty extends Property {
 		this.identifierAssignedByInsert = identifierGenerator instanceof PostInsertIdentifierGenerator;
 	}
 
+	@Override
 	public boolean isVirtual() {
 		return virtual;
 	}
 
+	@Override
 	public boolean isEmbedded() {
 		return embedded;
 	}
 
+	@Override
 	public IdentifierValue getUnsavedValue() {
 		return unsavedValue;
 	}
 
+	@Override
 	public IdentifierGenerator getIdentifierGenerator() {
 		return identifierGenerator;
 	}
 
+	@Override
 	public boolean isIdentifierAssignedByInsert() {
 		return identifierAssignedByInsert;
 	}
 
+	@Override
 	public boolean hasIdentifierMapper() {
 		return hasIdentifierMapper;
+	}
+
+	@Override
+	public String toString() {
+		return "IdentifierAttribute(" + getName() + ")";
 	}
 }

@@ -1,26 +1,8 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2008, Red Hat Middleware LLC or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Middleware LLC.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
- *
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.tool.hbm2ddl;
 
@@ -34,13 +16,19 @@ import org.hibernate.engine.jdbc.spi.SqlExceptionHelper;
  * connection.
  *
  * @author Steve Ebersole
+ *
+ * @deprecated Everything in this package has been replaced with
+ * {@link org.hibernate.tool.schema.spi.SchemaManagementTool} and friends.
  */
+@Deprecated
 class SuppliedConnectionHelper implements ConnectionHelper {
 	private Connection connection;
 	private boolean toggleAutoCommit;
+	private final SqlExceptionHelper sqlExceptionHelper;
 
-	public SuppliedConnectionHelper(Connection connection) {
+	public SuppliedConnectionHelper(Connection connection, SqlExceptionHelper sqlExceptionHelper) {
 		this.connection = connection;
+		this.sqlExceptionHelper = sqlExceptionHelper;
 	}
 
 	public void prepare(boolean needsAutoCommit) throws SQLException {
@@ -61,7 +49,7 @@ class SuppliedConnectionHelper implements ConnectionHelper {
 	}
 
 	public void release() throws SQLException {
-		new SqlExceptionHelper().logAndClearWarnings( connection );
+		sqlExceptionHelper.logAndClearWarnings( connection );
 		if ( toggleAutoCommit ) {
 			connection.setAutoCommit( false );
 		}

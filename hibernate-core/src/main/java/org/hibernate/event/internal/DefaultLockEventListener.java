@@ -1,25 +1,8 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2008-2011, Red Hat Inc. or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Inc.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.event.internal;
 
@@ -29,14 +12,18 @@ import org.hibernate.HibernateException;
 import org.hibernate.LockMode;
 import org.hibernate.TransientObjectException;
 import org.hibernate.engine.internal.Cascade;
+import org.hibernate.engine.internal.CascadePoint;
 import org.hibernate.engine.internal.ForeignKeys;
-import org.hibernate.engine.spi.CascadingAction;
+import org.hibernate.engine.spi.CascadingActions;
 import org.hibernate.engine.spi.EntityEntry;
 import org.hibernate.engine.spi.SessionImplementor;
 import org.hibernate.event.spi.EventSource;
 import org.hibernate.event.spi.LockEvent;
 import org.hibernate.event.spi.LockEventListener;
+import org.hibernate.internal.CoreMessageLogger;
 import org.hibernate.persister.entity.EntityPersister;
+
+import org.jboss.logging.Logger;
 
 /**
  * Defines the default lock event listeners used by hibernate to lock entities
@@ -46,7 +33,13 @@ import org.hibernate.persister.entity.EntityPersister;
  */
 public class DefaultLockEventListener extends AbstractLockUpgradeEventListener implements LockEventListener {
 
-	/** Handle the given lock event.
+	private static final CoreMessageLogger LOG = Logger.getMessageLogger(
+			CoreMessageLogger.class,
+			DefaultLockEventListener.class.getName()
+	);
+
+	/**
+	 * Handle the given lock event.
 	 *
 	 * @param event The lock event to be handled.
 	 * @throws HibernateException
@@ -59,6 +52,10 @@ public class DefaultLockEventListener extends AbstractLockUpgradeEventListener i
 
 		if ( event.getLockMode() == LockMode.WRITE ) {
 			throw new HibernateException( "Invalid lock mode for lock()" );
+		}
+
+		if ( event.getLockMode() == LockMode.UPGRADE_SKIPLOCKED ) {
+			LOG.explicitSkipLockedLockCombo();
 		}
 
 		SessionImplementor source = event.getSession();
@@ -89,8 +86,14 @@ public class DefaultLockEventListener extends AbstractLockUpgradeEventListener i
 		EventSource source = event.getSession();
 		source.getPersistenceContext().incrementCascadeLevel();
 		try {
-			new Cascade(CascadingAction.LOCK, Cascade.AFTER_LOCK, source)
-					.cascade( persister, entity, event.getLockOptions() );
+			Cascade.cascade(
+					CascadingActions.LOCK,
+					CascadePoint.AFTER_LOCK,
+					source,
+					persister,
+					entity,
+					event.getLockOptions()
+			);
 		}
 		finally {
 			source.getPersistenceContext().decrementCascadeLevel();

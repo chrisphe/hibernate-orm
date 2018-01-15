@@ -1,43 +1,28 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2010, Red Hat Inc. or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Inc.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.mapping;
+
 import java.util.Iterator;
 
 import org.hibernate.FetchMode;
 import org.hibernate.MappingException;
-import org.hibernate.cfg.Mappings;
+import org.hibernate.boot.spi.MetadataImplementor;
 import org.hibernate.engine.spi.Mapping;
+import org.hibernate.service.ServiceRegistry;
 import org.hibernate.type.EntityType;
 import org.hibernate.type.Type;
 
 /**
  * A mapping for a one-to-many association
+ *
  * @author Gavin King
  */
 public class OneToMany implements Value {
-
-	private final Mappings mappings;
+	private final MetadataImplementor metadata;
 	private final Table referencingTable;
 
 	private String referencedEntityName;
@@ -45,30 +30,35 @@ public class OneToMany implements Value {
 	private boolean embedded;
 	private boolean ignoreNotFound;
 
-	private EntityType getEntityType() {
-		return mappings.getTypeResolver().getTypeFactory().manyToOne(
-				getReferencedEntityName(), 
-				null, 
-				false,
-				false,
-				isEmbedded(),
-				isIgnoreNotFound(),
-				false
-			);
+	public OneToMany(MetadataImplementor metadata, PersistentClass owner) throws MappingException {
+		this.metadata = metadata;
+		this.referencingTable = ( owner == null ) ? null : owner.getTable();
 	}
 
-	public OneToMany(Mappings mappings, PersistentClass owner) throws MappingException {
-		this.mappings = mappings;
-		this.referencingTable = (owner==null) ? null : owner.getTable();
+	@Override
+	public ServiceRegistry getServiceRegistry() {
+		return metadata.getMetadataBuildingOptions().getServiceRegistry();
+	}
+
+	private EntityType getEntityType() {
+		return metadata.getTypeResolver().getTypeFactory().manyToOne(
+				getReferencedEntityName(),
+				true,
+				null,
+				false,
+				false,
+				isIgnoreNotFound(),
+				false
+		);
 	}
 
 	public PersistentClass getAssociatedClass() {
 		return associatedClass;
 	}
 
-    /**
-     * Associated entity on the many side
-     */
+	/**
+	 * Associated entity on the many side
+	 */
 	public void setAssociatedClass(PersistentClass associatedClass) {
 		this.associatedClass = associatedClass;
 	}
@@ -77,7 +67,7 @@ public class OneToMany implements Value {
 		// no foreign key element of for a one-to-many
 	}
 
-	public Iterator getColumnIterator() {
+	public Iterator<Selectable> getColumnIterator() {
 		return associatedClass.getKey().getColumnIterator();
 	}
 
@@ -89,9 +79,9 @@ public class OneToMany implements Value {
 		return FetchMode.JOIN;
 	}
 
-    /** 
-     * Table of the owner entity (the "one" side)
-     */
+	/**
+	 * Table of the owner entity (the "one" side)
+	 */
 	public Table getTable() {
 		return referencingTable;
 	}
@@ -115,48 +105,41 @@ public class OneToMany implements Value {
 	public boolean hasFormula() {
 		return false;
 	}
-	
+
 	public boolean isValid(Mapping mapping) throws MappingException {
-		if (referencedEntityName==null) {
-			throw new MappingException("one to many association must specify the referenced entity");
+		if ( referencedEntityName == null ) {
+			throw new MappingException( "one to many association must specify the referenced entity" );
 		}
 		return true;
 	}
 
-    public String getReferencedEntityName() {
+	public String getReferencedEntityName() {
 		return referencedEntityName;
 	}
 
-    /** 
-     * Associated entity on the "many" side
-     */    
+	/**
+	 * Associated entity on the "many" side
+	 */
 	public void setReferencedEntityName(String referencedEntityName) {
-		this.referencedEntityName = referencedEntityName==null ? null : referencedEntityName.intern();
+		this.referencedEntityName = referencedEntityName == null ? null : referencedEntityName.intern();
 	}
 
-	public void setTypeUsingReflection(String className, String propertyName) {}
-	
-	public Object accept(ValueVisitor visitor) {
-		return visitor.accept(this);
+	public void setTypeUsingReflection(String className, String propertyName) {
 	}
-	
-	
+
+	public Object accept(ValueVisitor visitor) {
+		return visitor.accept( this );
+	}
+
+
 	public boolean[] getColumnInsertability() {
 		//TODO: we could just return all false...
 		throw new UnsupportedOperationException();
 	}
-	
+
 	public boolean[] getColumnUpdateability() {
 		//TODO: we could just return all false...
 		throw new UnsupportedOperationException();
-	}
-	
-	public boolean isEmbedded() {
-		return embedded;
-	}
-	
-	public void setEmbedded(boolean embedded) {
-		this.embedded = embedded;
 	}
 
 	public boolean isIgnoreNotFound() {
@@ -166,5 +149,5 @@ public class OneToMany implements Value {
 	public void setIgnoreNotFound(boolean ignoreNotFound) {
 		this.ignoreNotFound = ignoreNotFound;
 	}
-	
+
 }

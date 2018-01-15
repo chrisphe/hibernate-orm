@@ -1,25 +1,8 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2010, Red Hat Inc. or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Inc.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.dialect.lock;
 
@@ -27,18 +10,18 @@ import java.io.Serializable;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
 
-import org.jboss.logging.Logger;
-
 import org.hibernate.HibernateException;
 import org.hibernate.JDBCException;
 import org.hibernate.LockMode;
 import org.hibernate.StaleObjectStateException;
 import org.hibernate.engine.spi.SessionFactoryImplementor;
-import org.hibernate.engine.spi.SessionImplementor;
+import org.hibernate.engine.spi.SharedSessionContractImplementor;
 import org.hibernate.internal.CoreMessageLogger;
 import org.hibernate.persister.entity.Lockable;
 import org.hibernate.pretty.MessageHelper;
 import org.hibernate.sql.Update;
+
+import org.jboss.logging.Logger;
 
 /**
  * A pessimistic locking strategy where the locks are obtained through update statements.
@@ -52,8 +35,7 @@ import org.hibernate.sql.Update;
  * @since 3.5
  */
 public class PessimisticWriteUpdateLockingStrategy implements LockingStrategy {
-
-    private static final CoreMessageLogger LOG = Logger.getMessageLogger(
+	private static final CoreMessageLogger LOG = Logger.getMessageLogger(
 			CoreMessageLogger.class,
 			PessimisticWriteUpdateLockingStrategy.class.getName()
 	);
@@ -84,14 +66,15 @@ public class PessimisticWriteUpdateLockingStrategy implements LockingStrategy {
 	}
 
 	@Override
-	public void lock(Serializable id, Object version, Object object, int timeout, SessionImplementor session) {
+	public void lock(Serializable id, Object version, Object object, int timeout, SharedSessionContractImplementor session) {
 		if ( !lockable.isVersioned() ) {
 			throw new HibernateException( "write locks via update not supported for non-versioned entities [" + lockable.getEntityName() + "]" );
 		}
-		SessionFactoryImplementor factory = session.getFactory();
+
+		final SessionFactoryImplementor factory = session.getFactory();
 		try {
 			try {
-				PreparedStatement st = session.getTransactionCoordinator().getJdbcCoordinator().getStatementPreparer().prepareStatement( sql );
+				final PreparedStatement st = session.getJdbcCoordinator().getStatementPreparer().prepareStatement( sql );
 				try {
 					lockable.getVersionType().nullSafeSet( st, version, 1, session );
 					int offset = 2;
@@ -103,21 +86,23 @@ public class PessimisticWriteUpdateLockingStrategy implements LockingStrategy {
 						lockable.getVersionType().nullSafeSet( st, version, offset, session );
 					}
 
-					int affected = st.executeUpdate();
-					if ( affected < 0 ) {  // todo:  should this instead check for exactly one row modified?
+					final int affected = session.getJdbcCoordinator().getResultSetReturn().executeUpdate( st );
+					// todo:  should this instead check for exactly one row modified?
+					if ( affected < 0 ) {
 						if (factory.getStatistics().isStatisticsEnabled()) {
-							factory.getStatisticsImplementor().optimisticFailure( lockable.getEntityName() );
+							factory.getStatistics().optimisticFailure( lockable.getEntityName() );
 						}
 						throw new StaleObjectStateException( lockable.getEntityName(), id );
 					}
 
 				}
 				finally {
-					st.close();
+					session.getJdbcCoordinator().getLogicalConnection().getResourceRegistry().release( st );
+					session.getJdbcCoordinator().afterStatementExecution();
 				}
 			}
 			catch ( SQLException e ) {
-				throw session.getFactory().getSQLExceptionHelper().convert(
+				throw session.getJdbcServices().getSqlExceptionHelper().convert(
 						e,
 						"could not lock: " + MessageHelper.infoString( lockable, id, session.getFactory() ),
 						sql
@@ -130,13 +115,13 @@ public class PessimisticWriteUpdateLockingStrategy implements LockingStrategy {
 	}
 
 	protected String generateLockString() {
-		SessionFactoryImplementor factory = lockable.getFactory();
-		Update update = new Update( factory.getDialect() );
+		final SessionFactoryImplementor factory = lockable.getFactory();
+		final Update update = new Update( factory.getDialect() );
 		update.setTableName( lockable.getRootTableName() );
 		update.addPrimaryKeyColumns( lockable.getRootTableIdentifierColumnNames() );
 		update.setVersionColumnName( lockable.getVersionColumnName() );
 		update.addColumn( lockable.getVersionColumnName() );
-		if ( factory.getSettings().isCommentsEnabled() ) {
+		if ( factory.getSessionFactoryOptions().isCommentsEnabled() ) {
 			update.setComment( lockMode + " lock " + lockable.getEntityName() );
 		}
 		return update.toStatementString();

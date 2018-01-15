@@ -1,51 +1,38 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2011, Red Hat Inc. or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Inc.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate;
 
 import java.sql.Connection;
+import java.util.TimeZone;
+
+import org.hibernate.resource.jdbc.spi.PhysicalConnectionHandlingMode;
+import org.hibernate.resource.jdbc.spi.StatementInspector;
 
 /**
  * Represents a consolidation of all session creation options into a builder style delegate.
  * 
  * @author Steve Ebersole
  */
-public interface SessionBuilder {
+public interface SessionBuilder<T extends SessionBuilder> {
 	/**
 	 * Opens a session with the specified options.
 	 *
 	 * @return The session
 	 */
-	public Session openSession();
+	Session openSession();
 
 	/**
-	 * Adds a specific interceptor to the session options
+	 * Adds a specific interceptor to the session options.
 	 *
 	 * @param interceptor The interceptor to use.
 	 *
 	 * @return {@code this}, for method chaining
 	 */
-	public SessionBuilder interceptor(Interceptor interceptor);
+	T interceptor(Interceptor interceptor);
 
 	/**
 	 * Signifies that no {@link Interceptor} should be used.
@@ -58,43 +45,88 @@ public interface SessionBuilder {
 	 *
 	 * @return {@code this}, for method chaining
 	 */
-	public SessionBuilder noInterceptor();
+	T noInterceptor();
 
 	/**
-	 * Adds a specific connection to the session options
+	 * Applies a specific StatementInspector to the session options.
+	 *
+	 * @param statementInspector The StatementInspector to use.
+	 *
+	 * @return {@code this}, for method chaining
+	 */
+	T statementInspector(StatementInspector statementInspector);
+
+	/**
+	 * Adds a specific connection to the session options.
 	 *
 	 * @param connection The connection to use.
 	 *
 	 * @return {@code this}, for method chaining
 	 */
-	public SessionBuilder connection(Connection connection);
+	T connection(Connection connection);
 
 	/**
-	 * Use a specific connection release mode for these session options
+	 * Use a specific connection release mode for these session options.
 	 *
 	 * @param connectionReleaseMode The connection release mode to use.
 	 *
 	 * @return {@code this}, for method chaining
+	 *
+	 * @deprecated (since 5.2) use {@link #connectionHandlingMode} instead
 	 */
-	public SessionBuilder connectionReleaseMode(ConnectionReleaseMode connectionReleaseMode);
+	@Deprecated
+	T connectionReleaseMode(ConnectionReleaseMode connectionReleaseMode);
 
 	/**
-	 * Should the session built automatically join in any ongoing JTA transactions
+	 * Signifies that the connection release mode from the original session should be used to create the new session.
+	 *
+	 * @param mode The connection handling mode to use.
+	 *
+	 * @return {@code this}, for method chaining
+	 */
+	T connectionHandlingMode(PhysicalConnectionHandlingMode mode);
+
+	/**
+	 * Should the session built automatically join in any ongoing JTA transactions.
 	 *
 	 * @param autoJoinTransactions Should JTA transactions be automatically joined
 	 *
 	 * @return {@code this}, for method chaining
+	 *
+	 * @see javax.persistence.SynchronizationType#SYNCHRONIZED
 	 */
-	public SessionBuilder autoJoinTransactions(boolean autoJoinTransactions);
+	T autoJoinTransactions(boolean autoJoinTransactions);
 
 	/**
-	 * Should the session be automatically closed after transaction completion
+	 * Should the session be automatically closed after transaction completion?
 	 *
 	 * @param autoClose Should the session be automatically closed
 	 *
 	 * @return {@code this}, for method chaining
+	 *
+	 * @see javax.persistence.PersistenceContextType
 	 */
-	public SessionBuilder autoClose(boolean autoClose);
+	T autoClose(boolean autoClose);
+
+	/**
+	 * Should the session be automatically cleared on a failed transaction?
+	 *
+	 * @param autoClear Whether the Session should be automatically cleared
+	 *
+	 * @return {@code this}, for method chaining
+	 */
+	T autoClear(boolean autoClear);
+
+	/**
+	 * Specify the initial FlushMode to use for the opened Session
+	 *
+	 * @param flushMode The initial FlushMode to use for the opened Session
+	 *
+	 * @return {@code this}, for method chaining
+	 *
+	 * @see javax.persistence.PersistenceContextType
+	 */
+	T flushMode(FlushMode flushMode);
 
 	/**
 	 * Should the session be automatically flushed during the "before completion" phase of transaction handling.
@@ -102,8 +134,20 @@ public interface SessionBuilder {
 	 * @param flushBeforeCompletion Should the session be automatically flushed
 	 *
 	 * @return {@code this}, for method chaining
+	 *
+	 * @deprecated (since 5.2) use {@link #flushMode(FlushMode)} instead.
 	 */
-	public SessionBuilder flushBeforeCompletion(boolean flushBeforeCompletion);
+	@Deprecated
+	@SuppressWarnings("unchecked")
+	default T flushBeforeCompletion(boolean flushBeforeCompletion) {
+		if ( flushBeforeCompletion ) {
+			flushMode( FlushMode.ALWAYS );
+		}
+		else {
+			flushMode( FlushMode.MANUAL );
+		}
+		return (T) this;
+	}
 
 	/**
 	 * Define the tenant identifier to be associated with the opened session.
@@ -112,5 +156,38 @@ public interface SessionBuilder {
 	 *
 	 * @return {@code this}, for method chaining
 	 */
-	public SessionBuilder tenantIdentifier(String tenantIdentifier);
+	T tenantIdentifier(String tenantIdentifier);
+
+	/**
+	 * Apply one or more SessionEventListener instances to the listeners for the Session to be built.
+	 *
+	 * @param listeners The listeners to incorporate into the built Session
+	 *
+	 * @return {@code this}, for method chaining
+	 */
+	T eventListeners(SessionEventListener... listeners);
+
+	/**
+	 * Remove all listeners intended for the built Session currently held here, including any auto-apply ones; in other
+	 * words, start with a clean slate.
+	 *
+	 * {@code this}, for method chaining
+	 */
+	T clearEventListeners();
+
+	T jdbcTimeZone(TimeZone timeZone);
+
+	/**
+	 * Should {@link org.hibernate.query.Query#setParameter} perform parameter validation
+	 * when the Session is bootstrapped via JPA {@link javax.persistence.EntityManagerFactory}
+	 *
+	 * @param enabled {@code true} indicates the validation should be performed, {@code false} otherwise
+	 * <p>
+	 * The default value is {@code true}
+	 *
+	 * @return {@code this}, for method chaining
+	 */
+	default T setQueryParameterValidation(boolean enabled) {
+		return (T) this;
+	}
 }

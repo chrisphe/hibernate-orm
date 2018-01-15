@@ -1,28 +1,11 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2008, Red Hat Middleware LLC or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Middleware LLC.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
- *
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.loader.collection;
+
 import java.io.Serializable;
 import java.util.Collection;
 import java.util.Iterator;
@@ -34,7 +17,8 @@ import org.hibernate.engine.spi.EntityKey;
 import org.hibernate.engine.spi.LoadQueryInfluencers;
 import org.hibernate.engine.spi.QueryParameters;
 import org.hibernate.engine.spi.SessionFactoryImplementor;
-import org.hibernate.engine.spi.SessionImplementor;
+import org.hibernate.engine.spi.SharedSessionContractImplementor;
+import org.hibernate.engine.spi.TypedValue;
 import org.hibernate.persister.collection.QueryableCollection;
 import org.hibernate.type.Type;
 
@@ -47,15 +31,15 @@ public class SubselectCollectionLoader extends BasicCollectionLoader {
 	private final Serializable[] keys;
 	private final Type[] types;
 	private final Object[] values;
-	private final Map namedParameters;
-	private final Map namedParameterLocMap;
+	private final Map<String, TypedValue> namedParameters;
+	private final Map<String, int[]> namedParameterLocMap;
 
 	public SubselectCollectionLoader(
 			QueryableCollection persister, 
 			String subquery,
 			Collection entityKeys,
 			QueryParameters queryParameters,
-			Map namedParameterLocMap,
+			Map<String, int[]> namedParameterLocMap,
 			SessionFactoryImplementor factory, 
 			LoadQueryInfluencers loadQueryInfluencers) throws MappingException {
 		super( persister, 1, subquery, factory, loadQueryInfluencers );
@@ -74,7 +58,8 @@ public class SubselectCollectionLoader extends BasicCollectionLoader {
 		
 	}
 
-	public void initialize(Serializable id, SessionImplementor session)
+	@Override
+	public void initialize(Serializable id, SharedSessionContractImplementor session)
 			throws HibernateException {
 		loadCollectionSubselect( 
 				session, 
@@ -86,8 +71,9 @@ public class SubselectCollectionLoader extends BasicCollectionLoader {
 		);
 	}
 
+	@Override
 	public int[] getNamedParameterLocs(String name) {
-		return (int[]) namedParameterLocMap.get( name );
+		return namedParameterLocMap.get( name );
 	}
 
 }

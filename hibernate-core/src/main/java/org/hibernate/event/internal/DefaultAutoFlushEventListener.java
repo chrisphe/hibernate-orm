@@ -1,29 +1,10 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2008-2011, Red Hat Inc. or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Inc.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.event.internal;
-
-import org.jboss.logging.Logger;
 
 import org.hibernate.FlushMode;
 import org.hibernate.HibernateException;
@@ -31,6 +12,8 @@ import org.hibernate.event.spi.AutoFlushEvent;
 import org.hibernate.event.spi.AutoFlushEventListener;
 import org.hibernate.event.spi.EventSource;
 import org.hibernate.internal.CoreMessageLogger;
+
+import org.jboss.logging.Logger;
 
 /**
  * Defines the default flush event listeners used by hibernate for
@@ -51,40 +34,53 @@ public class DefaultAutoFlushEventListener extends AbstractFlushingEventListener
 	 */
 	public void onAutoFlush(AutoFlushEvent event) throws HibernateException {
 		final EventSource source = event.getSession();
-		if ( flushMightBeNeeded(source) ) {
-			flushEverythingToExecutions(event);
-			if ( flushIsReallyNeeded(event, source) ) {
-				LOG.trace( "Need to execute flush" );
+		try {
+			source.getEventListenerManager().partialFlushStart();
 
-				performExecutions(source);
-				postFlush(source);
-				// note: performExecutions() clears all collectionXxxxtion
-				// collections (the collection actions) in the session
-
-				if ( source.getFactory().getStatistics().isStatisticsEnabled() ) {
-					source.getFactory().getStatisticsImplementor().flush();
-				}
-			}
-			else {
-				LOG.trace( "Don't need to execute flush" );
+			if ( flushMightBeNeeded(source) ) {
+				// Need to get the number of collection removals before flushing to executions
+				// (because flushing to executions can add collection removal actions to the action queue).
 				final int oldSize = source.getActionQueue().numberOfCollectionRemovals();
-				source.getActionQueue().clearFromFlushNeededCheck( oldSize );
-			}
+				flushEverythingToExecutions(event);
+				if ( flushIsReallyNeeded(event, source) ) {
+					LOG.trace( "Need to execute flush" );
 
-			event.setFlushRequired( flushIsReallyNeeded( event, source ) );
+					// note: performExecutions() clears all collectionXxxxtion
+					// collections (the collection actions) in the session
+					performExecutions(source);
+					postFlush(source);
+
+					postPostFlush( source );
+
+					if ( source.getFactory().getStatistics().isStatisticsEnabled() ) {
+						source.getFactory().getStatistics().flush();
+					}
+				}
+				else {
+					LOG.trace( "Don't need to execute flush" );
+					source.getActionQueue().clearFromFlushNeededCheck( oldSize );
+				}
+
+				event.setFlushRequired( flushIsReallyNeeded( event, source ) );
+			}
+		}
+		finally {
+			source.getEventListenerManager().partialFlushEnd(
+					event.getNumberOfEntitiesProcessed(),
+					event.getNumberOfEntitiesProcessed()
+			);
 		}
 	}
 
 	private boolean flushIsReallyNeeded(AutoFlushEvent event, final EventSource source) {
-		return source.getActionQueue()
-				.areTablesToBeUpdated( event.getQuerySpaces() ) ||
-						source.getFlushMode()==FlushMode.ALWAYS;
+		return source.getHibernateFlushMode() == FlushMode.ALWAYS
+				|| source.getActionQueue().areTablesToBeUpdated( event.getQuerySpaces() );
 	}
 
 	private boolean flushMightBeNeeded(final EventSource source) {
-		return !source.getFlushMode().lessThan(FlushMode.AUTO) &&
-				source.getDontFlushFromFind() == 0 &&
-				( source.getPersistenceContext().getEntityEntries().size() > 0 ||
+		return !source.getHibernateFlushMode().lessThan( FlushMode.AUTO )
+				&& source.getDontFlushFromFind() == 0
+				&& ( source.getPersistenceContext().getNumberOfManagedEntities() > 0 ||
 						source.getPersistenceContext().getCollectionEntries().size() > 0 );
 	}
 }

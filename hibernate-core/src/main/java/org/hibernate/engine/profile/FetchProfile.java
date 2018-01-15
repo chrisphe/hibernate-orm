@@ -1,33 +1,15 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2010, Red Hat Inc. or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Inc.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.engine.profile;
+
 import java.util.HashMap;
 import java.util.Map;
 
-import org.jboss.logging.Logger;
-
-import org.hibernate.engine.spi.SessionFactoryImplementor;
+import org.hibernate.internal.CoreLogging;
 import org.hibernate.internal.CoreMessageLogger;
 import org.hibernate.type.BagType;
 import org.hibernate.type.Type;
@@ -41,21 +23,17 @@ import org.hibernate.type.Type;
  * @author Steve Ebersole
  */
 public class FetchProfile {
-
-    private static final CoreMessageLogger LOG = Logger.getMessageLogger(CoreMessageLogger.class, FetchProfile.class.getName());
+	private static final CoreMessageLogger LOG = CoreLogging.messageLogger( FetchProfile.class );
 
 	private final String name;
 	private Map<String,Fetch> fetches = new HashMap<String,Fetch>();
 
-	private boolean containsJoinFetchedCollection = false;
-	private boolean containsJoinFetchedBag = false;
+	private boolean containsJoinFetchedCollection;
+	private boolean containsJoinFetchedBag;
 	private Fetch bagJoinFetch;
 
 	/**
-	 * A 'fetch profile' is uniquely named within a
-	 * {@link SessionFactoryImplementor SessionFactory}, thus it is also
-	 * uniquely and easily identifiable within that
-	 * {@link SessionFactoryImplementor SessionFactory}.
+	 * Constructs a FetchProfile, supplying its unique name (unique within the SessionFactory).
 	 *
 	 * @param name The name under which we are bound in the sessionFactory
 	 */
@@ -91,7 +69,7 @@ public class FetchProfile {
 	 */
 	public void addFetch(final Fetch fetch) {
 		final String fetchAssociactionRole = fetch.getAssociation().getRole();
-		Type associationType = fetch.getAssociation().getOwner().getPropertyType( fetch.getAssociation().getAssociationPath() );
+		final Type associationType = fetch.getAssociation().getOwner().getPropertyType( fetch.getAssociation().getAssociationPath() );
 		if ( associationType.isCollectionType() ) {
 			LOG.tracev( "Handling request to add collection fetch [{0}]", fetchAssociactionRole );
 
@@ -103,7 +81,8 @@ public class FetchProfile {
 				if ( BagType.class.isInstance( associationType ) ) {
 					if ( containsJoinFetchedCollection ) {
 						LOG.containsJoinFetchedCollection( fetchAssociactionRole );
-						return; // EARLY EXIT!!!
+						// EARLY EXIT!!!
+						return;
 					}
 				}
 
@@ -144,6 +123,13 @@ public class FetchProfile {
 		return fetches;
 	}
 
+	/**
+	 * Obtain the fetch associated with the given role.
+	 *
+	 * @param role The role identifying the fetch
+	 *
+	 * @return The fetch, or {@code null} if a matching one was not found
+	 */
 	public Fetch getFetchByRole(String role) {
 		return fetches.get( role );
 	}

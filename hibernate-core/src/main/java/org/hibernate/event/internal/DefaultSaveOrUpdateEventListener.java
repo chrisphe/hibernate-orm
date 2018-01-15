@@ -1,31 +1,12 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2008-2011, Red Hat Inc. or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Inc.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.event.internal;
 
 import java.io.Serializable;
-
-import org.jboss.logging.Logger;
 
 import org.hibernate.AssertionFailure;
 import org.hibernate.HibernateException;
@@ -34,7 +15,9 @@ import org.hibernate.PersistentObjectException;
 import org.hibernate.TransientObjectException;
 import org.hibernate.classic.Lifecycle;
 import org.hibernate.engine.internal.Cascade;
+import org.hibernate.engine.internal.CascadePoint;
 import org.hibernate.engine.spi.CascadingAction;
+import org.hibernate.engine.spi.CascadingActions;
 import org.hibernate.engine.spi.EntityEntry;
 import org.hibernate.engine.spi.EntityKey;
 import org.hibernate.engine.spi.SessionFactoryImplementor;
@@ -43,6 +26,7 @@ import org.hibernate.engine.spi.Status;
 import org.hibernate.event.spi.EventSource;
 import org.hibernate.event.spi.SaveOrUpdateEvent;
 import org.hibernate.event.spi.SaveOrUpdateEventListener;
+import org.hibernate.internal.CoreLogging;
 import org.hibernate.internal.CoreMessageLogger;
 import org.hibernate.persister.entity.EntityPersister;
 import org.hibernate.pretty.MessageHelper;
@@ -56,8 +40,7 @@ import org.hibernate.proxy.HibernateProxy;
  * @author Gavin King
  */
 public class DefaultSaveOrUpdateEventListener extends AbstractSaveEventListener implements SaveOrUpdateEventListener {
-
-	private static final CoreMessageLogger LOG = Logger.getMessageLogger( CoreMessageLogger.class, DefaultSaveOrUpdateEventListener.class.getName() );
+	private static final CoreMessageLogger LOG = CoreLogging.messageLogger( DefaultSaveOrUpdateEventListener.class );
 
 	/**
 	 * Handle the given update event.
@@ -73,7 +56,7 @@ public class DefaultSaveOrUpdateEventListener extends AbstractSaveEventListener 
 			//assign the requested id to the proxy, *before*
 			//reassociating the proxy
 			if ( object instanceof HibernateProxy ) {
-				( ( HibernateProxy ) object ).getHibernateLazyInitializer().setIdentifier( requestedId );
+				( (HibernateProxy) object ).getHibernateLazyInitializer().setIdentifier( requestedId );
 			}
 		}
 
@@ -116,8 +99,10 @@ public class DefaultSaveOrUpdateEventListener extends AbstractSaveEventListener 
 	}
 
 	protected Serializable entityIsPersistent(SaveOrUpdateEvent event) throws HibernateException {
-		LOG.trace( "Ignoring persistent instance" );
-
+		final boolean traceEnabled = LOG.isTraceEnabled();
+		if ( traceEnabled ) {
+			LOG.trace( "Ignoring persistent instance" );
+		}
 		EntityEntry entityEntry = event.getEntry();
 		if ( entityEntry == null ) {
 			throw new AssertionFailure( "entity was transient or detached" );
@@ -152,8 +137,11 @@ public class DefaultSaveOrUpdateEventListener extends AbstractSaveEventListener 
 
 			}
 
-			if ( LOG.isTraceEnabled() ) {
-				LOG.tracev( "Object already associated with session: {0}", MessageHelper.infoString( entityEntry.getPersister(), savedId, factory ) );
+			if ( traceEnabled ) {
+				LOG.tracev(
+						"Object already associated with session: {0}",
+						MessageHelper.infoString( entityEntry.getPersister(), savedId, factory )
+				);
 			}
 
 			return savedId;
@@ -278,32 +266,35 @@ public class DefaultSaveOrUpdateEventListener extends AbstractSaveEventListener 
 			Object entity,
 			EntityPersister persister) throws HibernateException {
 
-		if ( !persister.isMutable() ) {
+		final boolean traceEnabled = LOG.isTraceEnabled();
+		if ( traceEnabled && !persister.isMutable() ) {
 			LOG.trace( "Immutable instance passed to performUpdate()" );
 		}
 
-		if ( LOG.isTraceEnabled() ) {
-			LOG.tracev( "Updating {0}",
-					MessageHelper.infoString( persister, event.getRequestedId(), event.getSession().getFactory() ) );
+		if ( traceEnabled ) {
+			LOG.tracev(
+					"Updating {0}",
+					MessageHelper.infoString( persister, event.getRequestedId(), event.getSession().getFactory() )
+			);
 		}
 
 		final EventSource source = event.getSession();
 		final EntityKey key = source.generateEntityKey( event.getRequestedId(), persister );
 
-		source.getPersistenceContext().checkUniqueness(key, entity);
+		source.getPersistenceContext().checkUniqueness( key, entity );
 
-		if (invokeUpdateLifecycle(entity, persister, source)) {
-            reassociate(event, event.getObject(), event.getRequestedId(), persister);
-            return;
-        }
+		if ( invokeUpdateLifecycle( entity, persister, source ) ) {
+			reassociate( event, event.getObject(), event.getRequestedId(), persister );
+			return;
+		}
 
 		// this is a transient object with existing persistent state not loaded by the session
 
-		new OnUpdateVisitor(source, event.getRequestedId(), entity).process(entity, persister);
+		new OnUpdateVisitor( source, event.getRequestedId(), entity ).process( entity, persister );
 
 		// TODO: put this stuff back in to read snapshot from
-        // the second-level cache (needs some extra work)
-        /*Object[] cachedState = null;
+		// the second-level cache (needs some extra work)
+		/*Object[] cachedState = null;
 
         if ( persister.hasCache() ) {
         	CacheEntry entry = (CacheEntry) persister.getCache()
@@ -315,21 +306,26 @@ public class DefaultSaveOrUpdateEventListener extends AbstractSaveEventListener 
 
 		source.getPersistenceContext().addEntity(
 				entity,
-				(persister.isMutable() ? Status.MANAGED : Status.READ_ONLY),
+				( persister.isMutable() ? Status.MANAGED : Status.READ_ONLY ),
 				null, // cachedState,
 				key,
 				persister.getVersion( entity ),
 				LockMode.NONE,
 				true,
 				persister,
-				false,
-				true // assume true, since we don't really know, and it doesn't matter
-				);
+				false
+		);
 
-		persister.afterReassociate(entity, source);
+		persister.afterReassociate( entity, source );
 
-		if ( LOG.isTraceEnabled() ) {
-			LOG.tracev( "Updating {0}", MessageHelper.infoString( persister, event.getRequestedId(), source.getFactory() ) );
+		if ( traceEnabled ) {
+			LOG.tracev(
+					"Updating {0}", MessageHelper.infoString(
+					persister,
+					event.getRequestedId(),
+					source.getFactory()
+			)
+			);
 		}
 
 		cascadeOnUpdate( event, persister, entity );
@@ -355,11 +351,10 @@ public class DefaultSaveOrUpdateEventListener extends AbstractSaveEventListener 
 	 * @param entity The entity being updated.
 	 */
 	private void cascadeOnUpdate(SaveOrUpdateEvent event, EntityPersister persister, Object entity) {
-		EventSource source = event.getSession();
+		final EventSource source = event.getSession();
 		source.getPersistenceContext().incrementCascadeLevel();
 		try {
-			new Cascade( CascadingAction.SAVE_UPDATE, Cascade.AFTER_UPDATE, source )
-					.cascade( persister, entity );
+			Cascade.cascade( CascadingActions.SAVE_UPDATE, CascadePoint.AFTER_UPDATE, source, persister, entity );
 		}
 		finally {
 			source.getPersistenceContext().decrementCascadeLevel();
@@ -367,7 +362,7 @@ public class DefaultSaveOrUpdateEventListener extends AbstractSaveEventListener 
 	}
 
 	@Override
-    protected CascadingAction getCascadeAction() {
-		return CascadingAction.SAVE_UPDATE;
+	protected CascadingAction getCascadeAction() {
+		return CascadingActions.SAVE_UPDATE;
 	}
 }

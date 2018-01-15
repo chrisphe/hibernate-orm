@@ -1,29 +1,14 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2009 by Red Hat Inc and/or its affiliates or by
- * third-party contributors as indicated by either @author tags or express
- * copyright attribution statements applied by the authors.  All
- * third-party contributions are distributed under license by Red Hat Inc.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.engine.jdbc;
+
 import java.lang.reflect.Proxy;
 import java.sql.Clob;
+import java.sql.NClob;
 
 /**
  * Manages aspects of proxying java.sql.NClobs to add serializability.
@@ -31,27 +16,20 @@ import java.sql.Clob;
  * @author Steve Ebersole
  */
 public class SerializableNClobProxy extends SerializableClobProxy {
-	private static final Class NCLOB_CLASS = loadNClobClassIfAvailable();
+	private static final Class[] PROXY_INTERFACES = new Class[] { NClob.class, WrappedNClob.class };
 
-	private static Class loadNClobClassIfAvailable() {
-		try {
-			return getProxyClassLoader().loadClass( "java.sql.NClob" );
-		}
-		catch ( ClassNotFoundException e ) {
-			return null;
-		}
-	}
-
-	private static final Class[] PROXY_INTERFACES = new Class[] { determineNClobInterface(), WrappedClob.class };
-
-	private static Class determineNClobInterface() {
-		// java.sql.NClob is a simple marker interface extending java.sql.Clob.  So if java.sql.NClob is not available
-		// on the classloader, just use java.sql.Clob
-		return NCLOB_CLASS == null ? Clob.class : NCLOB_CLASS;
-	}
-
+	/**
+	 * Deprecated.
+	 *
+	 * @param clob The possible NClob reference
+	 *
+	 * @return {@code true} if the the Clob is a NClob as well
+	 *
+	 * @deprecated ORM baselines on JDK 1.6, so optional support for NClob (JDK 1,6 addition) is no longer needed.
+	 */
+	@Deprecated
 	public static boolean isNClob(Clob clob) {
-		return NCLOB_CLASS != null && NCLOB_CLASS.isInstance( clob );
+		return NClob.class.isInstance( clob );
 	}
 
 	/**
@@ -66,17 +44,13 @@ public class SerializableNClobProxy extends SerializableClobProxy {
 	}
 
 	/**
-	 * Generates a SerializableClobProxy proxy wrapping the provided Clob object.
+	 * Generates a SerializableNClobProxy proxy wrapping the provided NClob object.
 	 *
-	 * @param clob The Clob to wrap.
+	 * @param nclob The NClob to wrap.
 	 * @return The generated proxy.
 	 */
-	public static Clob generateProxy(Clob clob) {
-		return ( Clob ) Proxy.newProxyInstance(
-				getProxyClassLoader(),
-				PROXY_INTERFACES,
-				new SerializableNClobProxy( clob )
-		);
+	public static NClob generateProxy(NClob nclob) {
+		return (NClob) Proxy.newProxyInstance( getProxyClassLoader(), PROXY_INTERFACES, new SerializableNClobProxy( nclob ) );
 	}
 
 	/**

@@ -1,32 +1,15 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2008, Red Hat Middleware LLC or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Middleware LLC.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
- *
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.sql;
 
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 import java.util.StringTokenizer;
 
@@ -37,7 +20,10 @@ import org.hibernate.dialect.function.SQLFunctionRegistry;
 import org.hibernate.engine.spi.SessionFactoryImplementor;
 import org.hibernate.internal.util.StringHelper;
 import org.hibernate.sql.ordering.antlr.ColumnMapper;
+import org.hibernate.sql.ordering.antlr.OrderByAliasResolver;
 import org.hibernate.sql.ordering.antlr.OrderByFragmentTranslator;
+import org.hibernate.sql.ordering.antlr.OrderByTranslation;
+import org.hibernate.sql.ordering.antlr.SqlValueReference;
 import org.hibernate.sql.ordering.antlr.TranslationContext;
 
 /**
@@ -55,6 +41,7 @@ public final class Template {
 		KEYWORDS.add("or");
 		KEYWORDS.add("not");
 		KEYWORDS.add("like");
+		KEYWORDS.add("escape");
 		KEYWORDS.add("is");
 		KEYWORDS.add("in");
 		KEYWORDS.add("between");
@@ -114,9 +101,14 @@ public final class Template {
 	 * @deprecated Only intended for annotations usage; use {@link #renderWhereStringTemplate(String, String, Dialect, SQLFunctionRegistry)} instead
 	 */
 	@Deprecated
-    @SuppressWarnings({ "JavaDoc" })
+	@SuppressWarnings({ "JavaDoc" })
 	public static String renderWhereStringTemplate(String sqlWhereString, String placeholder, Dialect dialect) {
-		return renderWhereStringTemplate( sqlWhereString, placeholder, dialect, new SQLFunctionRegistry( dialect, java.util.Collections.EMPTY_MAP ) );
+		return renderWhereStringTemplate(
+				sqlWhereString,
+				placeholder,
+				dialect,
+				new SQLFunctionRegistry( dialect, java.util.Collections.<String, SQLFunction>emptyMap() )
+		);
 	}
 
 	/**
@@ -156,7 +148,7 @@ public final class Template {
 		String nextToken = hasMore ? tokens.nextToken() : null;
 		while ( hasMore ) {
 			String token = nextToken;
-			String lcToken = token.toLowerCase();
+			String lcToken = token.toLowerCase(Locale.ROOT);
 			hasMore = tokens.hasMoreTokens();
 			nextToken = hasMore ? tokens.nextToken() : null;
 
@@ -299,7 +291,7 @@ public final class Template {
 			else if ( isNamedParameter(token) ) {
 				result.append(token);
 			}
-			else if ( isIdentifier(token, dialect)
+			else if ( isIdentifier(token)
 					&& !isFunctionOrKeyword(lcToken, nextToken, dialect , functionRegistry) ) {
 				result.append(placeholder)
 						.append('.')
@@ -312,6 +304,9 @@ public final class Template {
 				}
 				else if ( inFromClause && ",".equals(lcToken) ) {
 					beforeTable = true;
+				}
+				if ( isBoolean( token ) ) {
+					token = dialect.toBooleanValueString( Boolean.parseBoolean( token ) );
 				}
 				result.append(token);
 			}
@@ -369,7 +364,7 @@ public final class Template {
 //		String nextToken = hasMore ? tokens.nextToken() : null;
 //		while ( hasMore ) {
 //			String token = nextToken;
-//			String lcToken = token.toLowerCase();
+//			String lcToken = token.toLowerCase(Locale.ROOT);
 //			hasMore = tokens.hasMoreTokens();
 //			nextToken = hasMore ? tokens.nextToken() : null;
 //
@@ -566,31 +561,32 @@ public final class Template {
 		private final String trimSource;
 
 		private TrimOperands(List<String> operands) {
-			if ( operands.size() == 1 ) {
+			final int size = operands.size();
+			if ( size == 1 ) {
 				trimSpec = null;
 				trimChar = null;
 				from = null;
 				trimSource = operands.get(0);
 			}
-			else if ( operands.size() == 4 ) {
+			else if ( size == 4 ) {
 				trimSpec = operands.get(0);
 				trimChar = operands.get(1);
 				from = operands.get(2);
 				trimSource = operands.get(3);
 			}
 			else {
-				if ( operands.size() < 1 || operands.size() > 4 ) {
-					throw new HibernateException( "Unexpected number of trim function operands : " + operands.size() );
+				if ( size < 1 || size > 4 ) {
+					throw new HibernateException( "Unexpected number of trim function operands : " + size );
 				}
 
 				// trim-source will always be the last operand
-				trimSource = operands.get( operands.size() - 1 );
+				trimSource = operands.get( size - 1 );
 
 				// ANSI SQL says that more than one operand means that the FROM is required
-				if ( ! "from".equals( operands.get( operands.size() - 2 ) ) ) {
-					throw new HibernateException( "Expecting FROM, found : " + operands.get( operands.size() - 2 ) );
+				if ( ! "from".equals( operands.get( size - 2 ) ) ) {
+					throw new HibernateException( "Expecting FROM, found : " + operands.get( size - 2 ) );
 				}
-				from = operands.get( operands.size() - 2 );
+				from = operands.get( size - 2 );
 
 				// trim-spec, if there is one will always be the first operand
 				if ( "leading".equalsIgnoreCase( operands.get(0) )
@@ -601,7 +597,7 @@ public final class Template {
 				}
 				else {
 					trimSpec = null;
-					if ( operands.size() - 2 == 0 ) {
+					if ( size - 2 == 0 ) {
 						trimChar = null;
 					}
 					else {
@@ -624,8 +620,9 @@ public final class Template {
 
 	public static class NoOpColumnMapper implements ColumnMapper {
 		public static final NoOpColumnMapper INSTANCE = new NoOpColumnMapper();
-		public String[] map(String reference) {
-			return new String[] { reference };
+		public SqlValueReference[] map(String reference) {
+//			return new String[] { reference };
+			return null;
 		}
 	}
 
@@ -639,10 +636,10 @@ public final class Template {
 	 *
 	 * @return The rendered <tt>ORDER BY</tt> template.
 	 *
-	 * @deprecated Use {@link #renderOrderByStringTemplate(String,ColumnMapper,SessionFactoryImplementor,Dialect,SQLFunctionRegistry)} instead
+	 * @deprecated Use {@link #translateOrderBy} instead
 	 */
 	@Deprecated
-    public static String renderOrderByStringTemplate(
+	public static String renderOrderByStringTemplate(
 			String orderByFragment,
 			Dialect dialect,
 			SQLFunctionRegistry functionRegistry) {
@@ -654,6 +651,28 @@ public final class Template {
 				functionRegistry
 		);
 	}
+
+	public static String renderOrderByStringTemplate(
+			String orderByFragment,
+			final ColumnMapper columnMapper,
+			final SessionFactoryImplementor sessionFactory,
+			final Dialect dialect,
+			final SQLFunctionRegistry functionRegistry) {
+		return translateOrderBy(
+				orderByFragment,
+				columnMapper,
+				sessionFactory,
+				dialect,
+				functionRegistry
+		).injectAliases( LEGACY_ORDER_BY_ALIAS_RESOLVER );
+	}
+
+	public static OrderByAliasResolver LEGACY_ORDER_BY_ALIAS_RESOLVER = new OrderByAliasResolver() {
+		@Override
+		public String resolveTableAlias(String columnReference) {
+			return TEMPLATE;
+		}
+	};
 
 	/**
 	 * Performs order-by template rendering allowing {@link ColumnMapper column mapping}.  An <tt>ORDER BY</tt> template
@@ -668,7 +687,7 @@ public final class Template {
 	 *
 	 * @return The rendered <tt>ORDER BY</tt> template.
 	 */
-	public static String renderOrderByStringTemplate(
+	public static OrderByTranslation translateOrderBy(
 			String orderByFragment,
 			final ColumnMapper columnMapper,
 			final SessionFactoryImplementor sessionFactory,
@@ -692,20 +711,28 @@ public final class Template {
 			}
 		};
 
-		OrderByFragmentTranslator translator = new OrderByFragmentTranslator( context );
-		return translator.render( orderByFragment );
+		return OrderByFragmentTranslator.translate( context, orderByFragment );
 	}
 
 	private static boolean isNamedParameter(String token) {
-		return token.startsWith(":");
+		return token.startsWith( ":" );
 	}
 
-	private static boolean isFunctionOrKeyword(String lcToken, String nextToken, Dialect dialect, SQLFunctionRegistry functionRegistry) {
-		return "(".equals(nextToken) ||
-			KEYWORDS.contains(lcToken) ||
-			isFunction(lcToken, nextToken, functionRegistry ) ||
-			dialect.getKeywords().contains(lcToken) ||
-			FUNCTION_KEYWORDS.contains(lcToken);
+	private static boolean isFunctionOrKeyword(
+			String lcToken,
+			String nextToken,
+			Dialect dialect,
+			SQLFunctionRegistry functionRegistry) {
+		return "(".equals( nextToken ) ||
+				KEYWORDS.contains( lcToken ) ||
+				isType( lcToken, dialect ) ||
+				isFunction( lcToken, nextToken, functionRegistry ) ||
+				dialect.getKeywords().contains( lcToken ) ||
+				FUNCTION_KEYWORDS.contains( lcToken );
+	}
+
+	private static boolean isType(String lcToken, Dialect dialect) {
+		return dialect.isTypeNameRegistered( lcToken );
 	}
 
 	private static boolean isFunction(String lcToken, String nextToken, SQLFunctionRegistry functionRegistry) {
@@ -724,11 +751,17 @@ public final class Template {
 		return ! function.hasParenthesesIfNoArguments();
 	}
 
-	private static boolean isIdentifier(String token, Dialect dialect) {
-		return token.charAt(0)=='`' || ( //allow any identifier quoted with backtick
-			Character.isLetter( token.charAt(0) ) && //only recognizes identifiers beginning with a letter
-			token.indexOf('.') < 0
+	private static boolean isIdentifier(String token) {
+		if ( isBoolean( token ) ) {
+			return false;
+		}
+		return token.charAt( 0 ) == '`' || ( //allow any identifier quoted with backtick
+				Character.isLetter( token.charAt( 0 ) ) && //only recognizes identifiers beginning with a letter
+						token.indexOf( '.' ) < 0
 		);
 	}
 
+	private static boolean isBoolean(String token) {
+		return "true".equals( token ) || "false".equals( token );
+	}
 }

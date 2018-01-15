@@ -1,44 +1,26 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2010, Red Hat Inc. or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Inc.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.internal.util.jndi;
 
 import java.util.Hashtable;
 import java.util.Map;
 import java.util.Properties;
-import java.util.Set;
 import javax.naming.Context;
 import javax.naming.InitialContext;
 import javax.naming.Name;
 import javax.naming.NameNotFoundException;
 import javax.naming.NamingException;
 
-import org.hibernate.cfg.Environment;
+import org.hibernate.engine.jndi.internal.JndiServiceImpl;
 
 /**
  * Helper for dealing with JNDI.
  *
- * @deprecated As JNDI access should get routed through {@link org.hibernate.service.jndi.spi.JndiService}
+ * @deprecated As JNDI access should get routed through {@link org.hibernate.engine.jndi.spi.JndiService}
  */
 @Deprecated
 public final class JndiHelper {
@@ -54,42 +36,12 @@ public final class JndiHelper {
 	 */
 	@SuppressWarnings({ "unchecked" })
 	public static Properties extractJndiProperties(Map configurationValues) {
-		final Properties jndiProperties = new Properties();
-
-		for ( Map.Entry entry : (Set<Map.Entry>) configurationValues.entrySet() ) {
-			if ( !String.class.isInstance( entry.getKey() ) ) {
-				continue;
-			}
-			final String propertyName = (String) entry.getKey();
-			final Object propertyValue = entry.getValue();
-			if ( propertyName.startsWith( Environment.JNDI_PREFIX ) ) {
-				// write the IntialContextFactory class and provider url to the result only if they are
-				// non-null; this allows the environmental defaults (if any) to remain in effect
-				if ( Environment.JNDI_CLASS.equals( propertyName ) ) {
-					if ( propertyValue != null ) {
-						jndiProperties.put( Context.INITIAL_CONTEXT_FACTORY, propertyValue );
-					}
-				}
-				else if ( Environment.JNDI_URL.equals( propertyName ) ) {
-					if ( propertyValue != null ) {
-						jndiProperties.put( Context.PROVIDER_URL, propertyValue );
-					}
-				}
-				else {
-					final String passThruPropertyname = propertyName.substring( Environment.JNDI_PREFIX.length() + 1 );
-					jndiProperties.put( passThruPropertyname, propertyValue );
-				}
-			}
-		}
-
-		return jndiProperties;
+		return JndiServiceImpl.extractJndiProperties( configurationValues );
 	}
 
 	public static InitialContext getInitialContext(Properties props) throws NamingException {
-		Hashtable hash = extractJndiProperties(props);
-		return hash.size()==0 ?
-				new InitialContext() :
-				new InitialContext(hash);
+		final Hashtable hash = extractJndiProperties( props );
+		return hash.size() == 0 ? new InitialContext() : new InitialContext( hash );
 	}
 
 	/**
@@ -106,27 +58,26 @@ public final class JndiHelper {
 			ctx.rebind(name, val);
 		}
 		catch (Exception e) {
-			Name n = ctx.getNameParser("").parse(name);
+			Name n = ctx.getNameParser( "" ).parse( name );
 			while ( n.size() > 1 ) {
-				String ctxName = n.get(0);
+				final String ctxName = n.get( 0 );
 
-				Context subctx=null;
+				Context subctx = null;
 				try {
-					subctx = (Context) ctx.lookup(ctxName);
+					subctx = (Context) ctx.lookup( ctxName );
 				}
 				catch (NameNotFoundException ignore) {
 				}
 
-				if (subctx!=null) {
+				if ( subctx != null ) {
 					ctx = subctx;
 				}
 				else {
-					ctx = ctx.createSubcontext(ctxName);
+					ctx = ctx.createSubcontext( ctxName );
 				}
-				n = n.getSuffix(1);
+				n = n.getSuffix( 1 );
 			}
-			ctx.rebind(n, val);
+			ctx.rebind( n, val );
 		}
 	}
 }
-

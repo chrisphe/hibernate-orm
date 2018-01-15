@@ -1,25 +1,8 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2010, Red Hat Inc. or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Inc.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.action.internal;
 
@@ -38,7 +21,7 @@ import org.hibernate.cache.spi.access.EntityRegionAccessStrategy;
 import org.hibernate.cache.spi.access.NaturalIdRegionAccessStrategy;
 import org.hibernate.cache.spi.access.SoftLock;
 import org.hibernate.engine.spi.SessionFactoryImplementor;
-import org.hibernate.engine.spi.SessionImplementor;
+import org.hibernate.engine.spi.SharedSessionContractImplementor;
 import org.hibernate.persister.collection.CollectionPersister;
 import org.hibernate.persister.entity.EntityPersister;
 import org.hibernate.persister.entity.Queryable;
@@ -58,9 +41,9 @@ import org.hibernate.persister.entity.Queryable;
 public class BulkOperationCleanupAction implements Executable, Serializable {
 	private final Serializable[] affectedTableSpaces;
 
-	private final Set<EntityCleanup> entityCleanups = new HashSet<EntityCleanup>();
-	private final Set<CollectionCleanup> collectionCleanups = new HashSet<CollectionCleanup>();
-	private final Set<NaturalIdCleanup> naturalIdCleanups = new HashSet<NaturalIdCleanup>();
+	private final Set<EntityCleanup> entityCleanups = new HashSet<>();
+	private final Set<CollectionCleanup> collectionCleanups = new HashSet<>();
+	private final Set<NaturalIdCleanup> naturalIdCleanups = new HashSet<>();
 
 	/**
 	 * Constructs an action to cleanup "affected cache regions" based on the
@@ -72,23 +55,23 @@ public class BulkOperationCleanupAction implements Executable, Serializable {
 	 * @param session The session to which this request is tied.
 	 * @param affectedQueryables The affected entity persisters.
 	 */
-	public BulkOperationCleanupAction(SessionImplementor session, Queryable[] affectedQueryables) {
-		SessionFactoryImplementor factory = session.getFactory();
-		LinkedHashSet<String> spacesList = new LinkedHashSet<String>();
+	public BulkOperationCleanupAction(SharedSessionContractImplementor session, Queryable... affectedQueryables) {
+		final SessionFactoryImplementor factory = session.getFactory();
+		final LinkedHashSet<String> spacesList = new LinkedHashSet<>();
 		for ( Queryable persister : affectedQueryables ) {
 			spacesList.addAll( Arrays.asList( (String[]) persister.getQuerySpaces() ) );
 
-			if ( persister.hasCache() ) {
+			if ( persister.canWriteToCache() ) {
 				entityCleanups.add( new EntityCleanup( persister.getCacheAccessStrategy() ) );
 			}
 			if ( persister.hasNaturalIdentifier() && persister.hasNaturalIdCache() ) {
 				naturalIdCleanups.add( new NaturalIdCleanup( persister.getNaturalIdCacheAccessStrategy() ) );
 			}
 
-			Set<String> roles = factory.getCollectionRolesByEntityParticipant( persister.getEntityName() );
+			final Set<String> roles = factory.getMetamodel().getCollectionRolesByEntityParticipant( persister.getEntityName() );
 			if ( roles != null ) {
 				for ( String role : roles ) {
-					CollectionPersister collectionPersister = factory.getCollectionPersister( role );
+					final CollectionPersister collectionPersister = factory.getMetamodel().collectionPersister( role );
 					if ( collectionPersister.hasCache() ) {
 						collectionCleanups.add( new CollectionCleanup( collectionPersister.getCacheAccessStrategy() ) );
 					}
@@ -101,7 +84,7 @@ public class BulkOperationCleanupAction implements Executable, Serializable {
 
 	/**
 	 * Constructs an action to cleanup "affected cache regions" based on a
-	 * set of affected table spaces.  This differs from {@link #BulkOperationCleanupAction(SessionImplementor, Queryable[])}
+	 * set of affected table spaces.  This differs from {@link #BulkOperationCleanupAction(SharedSessionContractImplementor, Queryable[])}
 	 * in that here we have the affected <strong>table names</strong>.  From those
 	 * we deduce the entity persisters which are affected based on the defined
 	 * {@link EntityPersister#getQuerySpaces() table spaces}; and from there, we
@@ -112,28 +95,27 @@ public class BulkOperationCleanupAction implements Executable, Serializable {
 	 * @param tableSpaces The table spaces.
 	 */
 	@SuppressWarnings({ "unchecked" })
-	public BulkOperationCleanupAction(SessionImplementor session, Set tableSpaces) {
-		LinkedHashSet<String> spacesList = new LinkedHashSet<String>();
+	public BulkOperationCleanupAction(SharedSessionContractImplementor session, Set tableSpaces) {
+		final LinkedHashSet<String> spacesList = new LinkedHashSet<>();
 		spacesList.addAll( tableSpaces );
 
-		SessionFactoryImplementor factory = session.getFactory();
-		for ( String entityName : factory.getAllClassMetadata().keySet() ) {
-			final EntityPersister persister = factory.getEntityPersister( entityName );
+		final SessionFactoryImplementor factory = session.getFactory();
+		for ( EntityPersister persister : factory.getMetamodel().entityPersisters().values() ) {
 			final String[] entitySpaces = (String[]) persister.getQuerySpaces();
 			if ( affectedEntity( tableSpaces, entitySpaces ) ) {
 				spacesList.addAll( Arrays.asList( entitySpaces ) );
 
-				if ( persister.hasCache() ) {
+				if ( persister.canWriteToCache() ) {
 					entityCleanups.add( new EntityCleanup( persister.getCacheAccessStrategy() ) );
 				}
 				if ( persister.hasNaturalIdentifier() && persister.hasNaturalIdCache() ) {
 					naturalIdCleanups.add( new NaturalIdCleanup( persister.getNaturalIdCacheAccessStrategy() ) );
 				}
 
-				Set<String> roles = session.getFactory().getCollectionRolesByEntityParticipant( persister.getEntityName() );
+				final Set<String> roles = session.getFactory().getMetamodel().getCollectionRolesByEntityParticipant( persister.getEntityName() );
 				if ( roles != null ) {
 					for ( String role : roles ) {
-						CollectionPersister collectionPersister = factory.getCollectionPersister( role );
+						final CollectionPersister collectionPersister = factory.getMetamodel().collectionPersister( role );
 						if ( collectionPersister.hasCache() ) {
 							collectionCleanups.add(
 									new CollectionCleanup( collectionPersister.getCacheAccessStrategy() )
@@ -187,7 +169,7 @@ public class BulkOperationCleanupAction implements Executable, Serializable {
 	public AfterTransactionCompletionProcess getAfterTransactionCompletionProcess() {
 		return new AfterTransactionCompletionProcess() {
 			@Override
-			public void doAfterTransactionCompletion(boolean success, SessionImplementor session) {
+			public void doAfterTransactionCompletion(boolean success, SharedSessionContractImplementor session) {
 				for ( EntityCleanup cleanup : entityCleanups ) {
 					cleanup.release();
 				}
@@ -217,7 +199,7 @@ public class BulkOperationCleanupAction implements Executable, Serializable {
 		// nothing to do		
 	}
 
-	private static class EntityCleanup {
+	private static class EntityCleanup implements Serializable {
 		private final EntityRegionAccessStrategy cacheAccess;
 		private final SoftLock cacheLock;
 
@@ -232,7 +214,7 @@ public class BulkOperationCleanupAction implements Executable, Serializable {
 		}
 	}
 
-	private static class CollectionCleanup {
+	private static class CollectionCleanup implements Serializable {
 		private final CollectionRegionAccessStrategy cacheAccess;
 		private final SoftLock cacheLock;
 
@@ -247,7 +229,7 @@ public class BulkOperationCleanupAction implements Executable, Serializable {
 		}
 	}
 
-	private class NaturalIdCleanup {
+	private static class NaturalIdCleanup implements Serializable {
 		private final NaturalIdRegionAccessStrategy naturalIdCacheAccessStrategy;
 		private final SoftLock cacheLock;
 
@@ -260,5 +242,10 @@ public class BulkOperationCleanupAction implements Executable, Serializable {
 		private void release() {
 			naturalIdCacheAccessStrategy.unlockRegion( cacheLock );
 		}
+	}
+
+	@Override
+	public void afterDeserialize(SharedSessionContractImplementor session) {
+		// nop
 	}
 }

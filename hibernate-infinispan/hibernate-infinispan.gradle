@@ -1,34 +1,37 @@
-apply plugin: 'java'
+/*
+ * Hibernate, Relational Persistence for Idiomatic Java
+ *
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
+ */
 
-configurations {
-    all*.exclude group: 'org.jboss.logging', module: 'jboss-logging-spi'
+mavenPom {
+	name = '(deprecated - use org.infinispan:infinispan-hibernate-cache instead)'
+	description = '(deprecated - use org.infinispan:infinispan-hibernate-cache instead)'
 }
 
-dependencies {
-    infinispanVersion = '5.1.4.FINAL'
-    jnpVersion = '5.0.3.GA'
+jar.enabled = false
+sourcesJar.enabled = false
+javadoc.enabled = false
+javadocJar.enabled = false
 
-    compile project( ':hibernate-core' )
-    compile "org.infinispan:infinispan-core:${infinispanVersion}"
-    compile "org.rhq.helpers:rhq-pluginAnnotations:3.0.4"
+def relocatedGroupId  = 'org.infinispan'
+def relocatedArtifactId  = 'infinispan-hibernate-cache'
+def relocatedVersion = '9.1.3.Final'
 
-    testCompile project( ':hibernate-testing' )
-    testCompile "org.infinispan:infinispan-core:${infinispanVersion}:tests@jar"
-    testCompile "org.jboss:jboss-common-core:2.2.14.GA"
-    testCompile "org.jboss.naming:jnp-client:${jnpVersion}"
-    testCompile "org.jboss.naming:jnpserver:${jnpVersion}"
-    testCompile "org.rhq.helpers:rhq-pluginAnnotations:1.4.0.B01"
-}
+publishing {
+	publications {
+		relocationPom( MavenPublication ) {
+			groupId 'org.hibernate'
+			artifactId 'hibernate-infinispan'
 
-test {
-   systemProperties['java.net.preferIPv4Stack'] = true
-   systemProperties['jgroups.ping.timeout'] = 500
-   systemProperties['jgroups.ping.num_initial_members'] = 1
-   systemProperties['jgroups.udp.enable_bundling'] = false
-   systemProperties['jgroups.bind_addr'] = 'localhost'
-   // Use Infinispan's test JGroups stack that uses TEST_PING
-   systemProperties['hibernate.cache.infinispan.jgroups_cfg'] = 'stacks/tcp.xml'
-   //   systemProperties['log4j.configuration'] = 'file:/log4j/log4j-infinispan.xml'
-   enabled = true
+			pom.withXml {
+				def relocation = asNode().appendNode( 'distributionManagement' ).appendNode( 'relocation' )
+				relocation.appendNode( 'groupId', relocatedGroupId)
+				relocation.appendNode( 'artifactId', relocatedArtifactId )
+				relocation.appendNode( 'version', relocatedVersion )
+			}
+		}
+	}
 }
 

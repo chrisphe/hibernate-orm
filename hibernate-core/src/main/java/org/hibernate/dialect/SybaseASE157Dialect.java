@@ -1,33 +1,21 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2011, Red Hat Inc. or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Inc.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.dialect;
 
+import java.sql.SQLException;
 import java.util.Map;
 
-import org.hibernate.LockMode;
+import org.hibernate.JDBCException;
 import org.hibernate.LockOptions;
 import org.hibernate.dialect.function.SQLFunctionTemplate;
+import org.hibernate.exception.ConstraintViolationException;
+import org.hibernate.exception.LockTimeoutException;
+import org.hibernate.exception.spi.SQLExceptionConversionDelegate;
+import org.hibernate.internal.util.JdbcExceptionHelper;
 import org.hibernate.sql.ForUpdateFragment;
 import org.hibernate.type.StandardBasicTypes;
 
@@ -39,6 +27,9 @@ import org.hibernate.type.StandardBasicTypes;
  */
 public class SybaseASE157Dialect extends SybaseASE15Dialect {
 
+	/**
+	 * Constructs a SybaseASE157Dialect
+	 */
 	public SybaseASE157Dialect() {
 		super();
 
@@ -50,34 +41,65 @@ public class SybaseASE157Dialect extends SybaseASE15Dialect {
 		registerFunction( "charindex", new SQLFunctionTemplate( StandardBasicTypes.INTEGER, "charindex(?1, ?2, ?3)" ) );
 	}
 
-	// support Lob Locator
+	@Override
+	public String getTableTypeString() {
+		//HHH-7298 I don't know if this would break something or cause some side affects
+		//but it is required to use 'select for update'
+		return " lock datarows";
+	}
+
+	@Override
 	public boolean supportsExpectedLobUsagePattern() {
 		return true;
 	}
-	
+
+	@Override
 	public boolean supportsLobValueChangePropogation() {
 		return false;
 	}
 
-	// support 'select ... for update [of columns]'
+	@Override
 	public boolean forUpdateOfColumns() {
 		return true;
 	}
-	
+
+	@Override
 	public String getForUpdateString() {
 		return " for update";
 	}
-	
+
+	@Override
 	public String getForUpdateString(String aliases) {
 		return getForUpdateString() + " of " + aliases;
 	}
 
-	public String appendLockHint(LockMode mode, String tableName) {
+	@Override
+	public String appendLockHint(LockOptions mode, String tableName) {
 		return tableName;
 	}
 
-	public String applyLocksToSql(String sql, LockOptions aliasedLockOptions, Map keyColumnNames) {
+	@Override
+	public String applyLocksToSql(String sql, LockOptions aliasedLockOptions, Map<String, String[]> keyColumnNames) {
 		return sql + new ForUpdateFragment( this, aliasedLockOptions, keyColumnNames ).toFragmentString();
 	}
-	
+
+	@Override
+	public SQLExceptionConversionDelegate buildSQLExceptionConversionDelegate() {
+		return new SQLExceptionConversionDelegate() {
+			@Override
+			public JDBCException convert(SQLException sqlException, String message, String sql) {
+				final String sqlState = JdbcExceptionHelper.extractSqlState( sqlException );
+				final int errorCode = JdbcExceptionHelper.extractErrorCode( sqlException );
+				if("JZ0TO".equals( sqlState ) || "JZ006".equals( sqlState )){
+					throw new LockTimeoutException( message, sqlException, sql );
+				}
+				if ( 515 == errorCode && "ZZZZZ".equals( sqlState ) ) {
+					// Attempt to insert NULL value into column; column does not allow nulls.
+					final String constraintName = getViolatedConstraintNameExtracter().extractConstraintName( sqlException );
+					return new ConstraintViolationException( message, sqlException, sql, constraintName );
+				}
+				return null;
+			}
+		};
+	}
 }

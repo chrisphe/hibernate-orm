@@ -1,27 +1,11 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2010, Red Hat Inc. or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Inc.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.dialect;
+
 import java.sql.Types;
 
 import org.hibernate.cfg.Environment;
@@ -29,17 +13,32 @@ import org.hibernate.dialect.function.NoArgSQLFunction;
 import org.hibernate.dialect.function.SQLFunctionTemplate;
 import org.hibernate.dialect.function.StandardSQLFunction;
 import org.hibernate.dialect.function.VarArgsSQLFunction;
+import org.hibernate.dialect.pagination.FirstLimitHandler;
+import org.hibernate.dialect.pagination.LegacyFirstLimitHandler;
+import org.hibernate.dialect.pagination.LimitHandler;
+import org.hibernate.hql.spi.id.IdTableSupportStandardImpl;
+import org.hibernate.hql.spi.id.MultiTableBulkIdStrategy;
+import org.hibernate.hql.spi.id.global.GlobalTemporaryTableBulkIdStrategy;
+import org.hibernate.hql.spi.id.local.AfterUseAction;
 import org.hibernate.type.StandardBasicTypes;
 
 /**
  * An SQL dialect for Ingres 9.2.
  * <p/>
- * Known limitations:
- * <ul>
- * <li> Only supports simple constants or columns on the left side of an IN, making (1,2,3) in (...) or (&lt;subselect&gt;) in (...) non-supported.
- * <li> Supports only 39 digits in decimal.
- * <li> Explicitly set USE_GET_GENERATED_KEYS property to false.
- * <li> Perform string casts to varchar; removes space padding.
+ * Known limitations: <ul>
+ *     <li>
+ *         Only supports simple constants or columns on the left side of an IN,
+ *         making {@code (1,2,3) in (...)} or {@code (subselect) in (...)} non-supported.
+ *     </li>
+ *     <li>
+ *         Supports only 39 digits in decimal.
+ *     </li>
+ *     <li>
+ *         Explicitly set USE_GET_GENERATED_KEYS property to false.
+ *     </li>
+ *     <li>
+ *         Perform string casts to varchar; removes space padding.
+ *     </li>
  * </ul>
  * 
  * @author Ian Booth
@@ -47,8 +46,12 @@ import org.hibernate.type.StandardBasicTypes;
  * @author Max Rydahl Andersen
  * @author Raymond Fan
  */
+@SuppressWarnings("deprecation")
 public class IngresDialect extends Dialect {
 
+	/**
+	 * Constructs a IngresDialect
+	 */
 	public IngresDialect() {
 		super();
 		registerColumnType( Types.BIT, "tinyint" );
@@ -145,145 +148,101 @@ public class IngresDialect extends Dialect {
 		// maximum width of a value for that return type.  Casting to varchar
 		// does not introduce space padding.
 		registerFunction( "str", new SQLFunctionTemplate(StandardBasicTypes.STRING, "cast(?1 as varchar)") );
-        // Ingres driver supports getGeneratedKeys but only in the following
-        // form:
-        // The Ingres DBMS returns only a single table key or a single object
-        // key per insert statement. Ingres does not return table and object
-        // keys for INSERT AS SELECT statements. Depending on the keys that are
-        // produced by the statement executed, auto-generated key parameters in
-        // execute(), executeUpdate(), and prepareStatement() methods are
-        // ignored and getGeneratedKeys() returns a result-set containing no
-        // rows, a single row with one column, or a single row with two columns.
-        // Ingres JDBC Driver returns table and object keys as BINARY values.
-        getDefaultProperties().setProperty(Environment.USE_GET_GENERATED_KEYS, "false");
-        // There is no support for a native boolean type that accepts values
-        // of true, false or unknown. Using the tinyint type requires
-        // substitions of true and false.
-        getDefaultProperties().setProperty(Environment.QUERY_SUBSTITUTIONS, "true=1,false=0");
+		// Ingres driver supports getGeneratedKeys but only in the following
+		// form:
+		// The Ingres DBMS returns only a single table key or a single object
+		// key per insert statement. Ingres does not return table and object
+		// keys for INSERT AS SELECT statements. Depending on the keys that are
+		// produced by the statement executed, auto-generated key parameters in
+		// execute(), executeUpdate(), and prepareStatement() methods are
+		// ignored and getGeneratedKeys() returns a result-set containing no
+		// rows, a single row with one column, or a single row with two columns.
+		// Ingres JDBC Driver returns table and object keys as BINARY values.
+		getDefaultProperties().setProperty( Environment.USE_GET_GENERATED_KEYS, "false" );
+		// There is no support for a native boolean type that accepts values
+		// of true, false or unknown. Using the tinyint type requires
+		// substitions of true and false.
+		getDefaultProperties().setProperty( Environment.QUERY_SUBSTITUTIONS, "true=1,false=0" );
 	}
-	/**
-	 * Expression for created UUID string
-	 */
+
+	@Override
 	public String getSelectGUIDString() {
 		return "select uuid_to_char(uuid_create())";
 	}
-	/**
-	 * Do we need to drop constraints before dropping tables in this dialect?
-	 *
-	 * @return boolean
-	 */
+
+	@Override
 	public boolean dropConstraints() {
 		return false;
 	}
 
-	/**
-	 * Does this dialect support <tt>FOR UPDATE OF</tt>, allowing
-	 * particular rows to be locked?
-	 *
-	 * @return True (Ingres does support "for update of" syntax...)
-	 */
-	public boolean supportsForUpdateOf() {
-		return true;
-	}
-
-	/**
-	 * The syntax used to add a column to a table (optional).
-	 */
+	@Override
 	public String getAddColumnString() {
 		return "add column";
 	}
 
-	/**
-	 * The keyword used to specify a nullable column.
-	 *
-	 * @return String
-	 */
+	@Override
 	public String getNullColumnString() {
 		return " with null";
 	}
 
-	/**
-	 * Does this dialect support sequences?
-	 *
-	 * @return boolean
-	 */
+	@Override
 	public boolean supportsSequences() {
 		return true;
 	}
 
-	/**
-	 * The syntax that fetches the next value of a sequence, if sequences are supported.
-	 *
-	 * @param sequenceName the name of the sequence
-	 *
-	 * @return String
-	 */
+	@Override
 	public String getSequenceNextValString(String sequenceName) {
 		return "select nextval for " + sequenceName;
 	}
 
+	@Override
 	public String getSelectSequenceNextValString(String sequenceName) {
 		return sequenceName + ".nextval";
 	}
 
-	/**
-	 * The syntax used to create a sequence, if sequences are supported.
-	 *
-	 * @param sequenceName the name of the sequence
-	 *
-	 * @return String
-	 */
+	@Override
 	public String getCreateSequenceString(String sequenceName) {
 		return "create sequence " + sequenceName;
 	}
 
-	/**
-	 * The syntax used to drop a sequence, if sequences are supported.
-	 *
-	 * @param sequenceName the name of the sequence
-	 *
-	 * @return String
-	 */
+	@Override
 	public String getDropSequenceString(String sequenceName) {
 		return "drop sequence " + sequenceName + " restrict";
 	}
 
-	/**
-	 * A query used to find all sequences
-	 */
+	@Override
 	public String getQuerySequencesString() {
 		return "select seq_name from iisequence";
 	}
 
-	/**
-	 * The name of the SQL function that transforms a string to
-	 * lowercase
-	 *
-	 * @return String
-	 */
+	@Override
 	public String getLowercaseFunction() {
 		return "lowercase";
 	}
 
-	/**
-	 * Does this <tt>Dialect</tt> have some kind of <tt>LIMIT</tt> syntax?
-	 */
+	@Override
+	public LimitHandler getLimitHandler() {
+		if ( isLegacyLimitHandlerBehaviorEnabled() ) {
+			return LegacyFirstLimitHandler.INSTANCE;
+		}
+		return getDefaultLimitHandler();
+	}
+
+	protected LimitHandler getDefaultLimitHandler() {
+		return FirstLimitHandler.INSTANCE;
+	}
+
+	@Override
 	public boolean supportsLimit() {
 		return true;
 	}
 
-	/**
-	 * Does this dialect support an offset?
-	 */
+	@Override
 	public boolean supportsLimitOffset() {
 		return false;
 	}
 
-	/**
-	 * Add a <tt>LIMIT</tt> clause to the given SQL <tt>SELECT</tt>
-	 *
-	 * @return the modified SQL
-	 */
+	@Override
 	public String getLimitString(String querySelect, int offset, int limit) {
 		if ( offset > 0 ) {
 			throw new UnsupportedOperationException( "query result offset is not supported" );
@@ -294,73 +253,64 @@ public class IngresDialect extends Dialect {
 				.toString();
 	}
 
+	@Override
 	public boolean supportsVariableLimit() {
 		return false;
 	}
 
-	/**
-	 * Does the <tt>LIMIT</tt> clause take a "maximum" row number instead
-	 * of a total number of returned rows?
-	 */
+	@Override
 	public boolean useMaxForLimit() {
 		return true;
 	}
 
-	/**
-	 * Ingres explicitly needs "unique not null", because "with null" is default
-	 */
-	public boolean supportsNotNullUnique() {
-		return false;
-	}
+	@Override
+	public MultiTableBulkIdStrategy getDefaultMultiTableBulkIdStrategy() {
+		return new GlobalTemporaryTableBulkIdStrategy(
+				new IdTableSupportStandardImpl() {
+					@Override
+					public String generateIdTableName(String baseName) {
+						return "session." + super.generateIdTableName( baseName );
+					}
 
-	/**
-	 * Does this dialect support temporary tables?
-	 */
-	public boolean supportsTemporaryTables() {
-		return true;
-	}
+					@Override
+					public String getCreateIdTableCommand() {
+						return "declare global temporary table";
+					}
 
-	public String getCreateTemporaryTableString() {
-		return "declare global temporary table";
-	}
-
-	public String getCreateTemporaryTablePostfix() {
-		return "on commit preserve rows with norecovery";
-	}
-
-	public String generateTemporaryTableName(String baseTableName) {
-		return "session." + super.generateTemporaryTableName( baseTableName );
+					@Override
+					public String getCreateIdTableStatementOptions() {
+						return "on commit preserve rows with norecovery";
+					}
+				},
+				AfterUseAction.CLEAN
+		);
 	}
 
 
-	/**
-	 * Expression for current_timestamp
-	 */
+	@Override
 	public String getCurrentTimestampSQLFunctionName() {
 		return "date(now)";
 	}
 
 	// Overridden informational metadata ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+	@Override
 	public boolean supportsSubselectAsInPredicateLHS() {
 		return false;
 	}
 
+	@Override
 	public boolean supportsEmptyInList() {
 		return false;
 	}
 
-	public boolean supportsExpectedLobUsagePattern () {
+	@Override
+	public boolean supportsExpectedLobUsagePattern() {
 		return false;
 	}
 
-	/**
-	 * Ingres does not support the syntax `count(distinct a,b)`?
-	 *
-	 * @return False, not supported.
-	 */
+	@Override
 	public boolean supportsTupleDistinctCounts() {
 		return false;
 	}
 }
-

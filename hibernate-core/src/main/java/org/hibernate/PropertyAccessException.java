@@ -1,26 +1,8 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2008, Red Hat Middleware LLC or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Middleware LLC.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
- *
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate;
 
@@ -39,13 +21,26 @@ import org.hibernate.internal.util.StringHelper;
  * @author Gavin King
  */
 public class PropertyAccessException extends HibernateException {
-
 	private final Class persistentClass;
 	private final String propertyName;
 	private final boolean wasSetter;
 
-	public PropertyAccessException(Throwable root, String s, boolean wasSetter, Class persistentClass, String propertyName) {
-		super(s, root);
+	/**
+	 * Constructs a PropertyAccessException using the specified information.
+	 *
+	 * @param cause The underlying cause
+	 * @param message A message explaining the exception condition
+	 * @param wasSetter Was the attempting to access the setter the cause of the exception?
+	 * @param persistentClass The class which is supposed to contain the property in question
+	 * @param propertyName The name of the property.
+	 */
+	public PropertyAccessException(
+			Throwable cause,
+			String message,
+			boolean wasSetter,
+			Class persistentClass,
+			String propertyName) {
+		super( message, cause );
 		this.persistentClass = persistentClass;
 		this.wasSetter = wasSetter;
 		this.propertyName = propertyName;
@@ -59,16 +54,14 @@ public class PropertyAccessException extends HibernateException {
 		return propertyName;
 	}
 
+	protected String originalMessage() {
+		return super.getMessage();
+	}
+
 	@Override
-    public String getMessage() {
-		return super.getMessage() +
-		( wasSetter ? " setter of " : " getter of ") +
-		StringHelper.qualify( persistentClass.getName(), propertyName );
+	public String getMessage() {
+		return originalMessage()
+				+ ( wasSetter ? " setter of " : " getter of " )
+				+ StringHelper.qualify( persistentClass.getName(), propertyName );
 	}
 }
-
-
-
-
-
-

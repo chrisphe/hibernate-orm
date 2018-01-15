@@ -1,25 +1,8 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2010, Red Hat Inc. or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Inc.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.dialect.lock;
 
@@ -33,7 +16,7 @@ import org.hibernate.LockMode;
 import org.hibernate.LockOptions;
 import org.hibernate.StaleObjectStateException;
 import org.hibernate.engine.spi.SessionFactoryImplementor;
-import org.hibernate.engine.spi.SessionImplementor;
+import org.hibernate.engine.spi.SharedSessionContractImplementor;
 import org.hibernate.persister.entity.Lockable;
 import org.hibernate.pretty.MessageHelper;
 import org.hibernate.sql.SimpleSelect;
@@ -68,12 +51,12 @@ public class PessimisticReadSelectLockingStrategy extends AbstractSelectLockingS
 	}
 
 	@Override
-	public void lock(Serializable id, Object version, Object object, int timeout, SessionImplementor session) {
+	public void lock(Serializable id, Object version, Object object, int timeout, SharedSessionContractImplementor session) {
 		final String sql = determineSql( timeout );
-		SessionFactoryImplementor factory = session.getFactory();
+		final SessionFactoryImplementor factory = session.getFactory();
 		try {
 			try {
-				PreparedStatement st = session.getTransactionCoordinator().getJdbcCoordinator().getStatementPreparer().prepareStatement( sql );
+				final PreparedStatement st = session.getJdbcCoordinator().getStatementPreparer().prepareStatement( sql );
 				try {
 					getLockable().getIdentifierType().nullSafeSet( st, id, 1, session );
 					if ( getLockable().isVersioned() ) {
@@ -85,27 +68,27 @@ public class PessimisticReadSelectLockingStrategy extends AbstractSelectLockingS
 						);
 					}
 
-					ResultSet rs = st.executeQuery();
+					final ResultSet rs = session.getJdbcCoordinator().getResultSetReturn().extract( st );
 					try {
 						if ( !rs.next() ) {
 							if ( factory.getStatistics().isStatisticsEnabled() ) {
-								factory.getStatisticsImplementor()
-										.optimisticFailure( getLockable().getEntityName() );
+								factory.getStatistics().optimisticFailure( getLockable().getEntityName() );
 							}
 							throw new StaleObjectStateException( getLockable().getEntityName(), id );
 						}
 					}
 					finally {
-						rs.close();
+						session.getJdbcCoordinator().getLogicalConnection().getResourceRegistry().release( rs, st );
 					}
 				}
 				finally {
-					st.close();
+					session.getJdbcCoordinator().getLogicalConnection().getResourceRegistry().release( st );
+					session.getJdbcCoordinator().afterStatementExecution();
 				}
 
 			}
 			catch ( SQLException e ) {
-				throw session.getFactory().getSQLExceptionHelper().convert(
+				throw session.getJdbcServices().getSqlExceptionHelper().convert(
 						e,
 						"could not lock: " + MessageHelper.infoString( getLockable(), id, session.getFactory() ),
 						sql
@@ -118,10 +101,10 @@ public class PessimisticReadSelectLockingStrategy extends AbstractSelectLockingS
 	}
 
 	protected String generateLockString(int lockTimeout) {
-		SessionFactoryImplementor factory = getLockable().getFactory();
-		LockOptions lockOptions = new LockOptions( getLockMode() );
+		final SessionFactoryImplementor factory = getLockable().getFactory();
+		final LockOptions lockOptions = new LockOptions( getLockMode() );
 		lockOptions.setTimeOut( lockTimeout );
-		SimpleSelect select = new SimpleSelect( factory.getDialect() )
+		final SimpleSelect select = new SimpleSelect( factory.getDialect() )
 				.setLockOptions( lockOptions )
 				.setTableName( getLockable().getRootTableName() )
 				.addColumn( getLockable().getRootTableIdentifierColumnNames()[0] )
@@ -129,7 +112,7 @@ public class PessimisticReadSelectLockingStrategy extends AbstractSelectLockingS
 		if ( getLockable().isVersioned() ) {
 			select.addCondition( getLockable().getVersionColumnName(), "=?" );
 		}
-		if ( factory.getSettings().isCommentsEnabled() ) {
+		if ( factory.getSessionFactoryOptions().isCommentsEnabled() ) {
 			select.setComment( getLockMode() + " lock " + getLockable().getEntityName() );
 		}
 		return select.toStatementString();

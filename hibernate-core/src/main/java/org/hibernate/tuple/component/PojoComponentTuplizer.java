@@ -1,26 +1,8 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2008, Red Hat Middleware LLC or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Middleware LLC.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
- *
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.tuple.component;
 import java.io.Serializable;
@@ -35,11 +17,11 @@ import org.hibernate.engine.spi.SessionFactoryImplementor;
 import org.hibernate.internal.util.ReflectHelper;
 import org.hibernate.mapping.Component;
 import org.hibernate.mapping.Property;
-import org.hibernate.property.BackrefPropertyAccessor;
-import org.hibernate.property.Getter;
-import org.hibernate.property.PropertyAccessor;
-import org.hibernate.property.PropertyAccessorFactory;
-import org.hibernate.property.Setter;
+import org.hibernate.property.access.internal.PropertyAccessStrategyBackRefImpl;
+import org.hibernate.property.access.internal.PropertyAccessStrategyBasicImpl;
+import org.hibernate.property.access.spi.Getter;
+import org.hibernate.property.access.spi.PropertyAccess;
+import org.hibernate.property.access.spi.Setter;
 import org.hibernate.tuple.Instantiator;
 import org.hibernate.tuple.PojoInstantiator;
 
@@ -50,15 +32,13 @@ import org.hibernate.tuple.PojoInstantiator;
  * @author Steve Ebersole
  */
 public class PojoComponentTuplizer extends AbstractComponentTuplizer {
-	private final Class componentClass;
+	private Class componentClass;
 	private ReflectionOptimizer optimizer;
 	private final Getter parentGetter;
 	private final Setter parentSetter;
 
 	public PojoComponentTuplizer(Component component) {
 		super( component );
-
-		this.componentClass = component.getComponentClass();
 
 		String[] getterNames = new String[propertySpan];
 		String[] setterNames = new String[propertySpan];
@@ -75,9 +55,12 @@ public class PojoComponentTuplizer extends AbstractComponentTuplizer {
 			parentGetter = null;
 		}
 		else {
-			PropertyAccessor pa = PropertyAccessorFactory.getPropertyAccessor( null );
-			parentSetter = pa.getSetter( componentClass, parentPropertyName );
-			parentGetter = pa.getGetter( componentClass, parentPropertyName );
+			final PropertyAccess propertyAccess = PropertyAccessStrategyBasicImpl.INSTANCE.buildPropertyAccess(
+					componentClass,
+					parentPropertyName
+			);
+			parentSetter = propertyAccess.getSetter();
+			parentGetter = propertyAccess.getGetter();
 		}
 
 		if ( hasCustomAccessors || !Environment.useReflectionOptimizer() ) {
@@ -97,10 +80,10 @@ public class PojoComponentTuplizer extends AbstractComponentTuplizer {
 	}
 
 	public Object[] getPropertyValues(Object component) throws HibernateException {
-		if ( component == BackrefPropertyAccessor.UNKNOWN ) {
+		if ( component == PropertyAccessStrategyBackRefImpl.UNKNOWN ) {
 			return new Object[propertySpan];
 		}
-		if ( optimizer != null && optimizer.getAccessOptimizer() != null ) {
+		else if ( optimizer != null && optimizer.getAccessOptimizer() != null ) {
 			return optimizer.getAccessOptimizer().getPropertyValues( component );
 		}
 		else {
@@ -140,31 +123,36 @@ public class PojoComponentTuplizer extends AbstractComponentTuplizer {
 	}
 
 	protected Instantiator buildInstantiator(Component component) {
-		if ( component.isEmbedded() && ReflectHelper.isAbstractClass( component.getComponentClass() ) ) {
-			return new ProxiedInstantiator( component );
+		if ( component.isEmbedded() && ReflectHelper.isAbstractClass( this.componentClass ) ) {
+			return new ProxiedInstantiator( this.componentClass );
 		}
 		if ( optimizer == null ) {
-			return new PojoInstantiator( component, null );
+			return new PojoInstantiator( this.componentClass, null );
 		}
 		else {
-			return new PojoInstantiator( component, optimizer.getInstantiationOptimizer() );
+			return new PojoInstantiator( this.componentClass, optimizer.getInstantiationOptimizer() );
 		}
 	}
 
 	protected Getter buildGetter(Component component, Property prop) {
-		return prop.getGetter( component.getComponentClass() );
+		return prop.getGetter( this.componentClass );
 	}
 
 	protected Setter buildSetter(Component component, Property prop) {
-		return prop.getSetter( component.getComponentClass() );
+		return prop.getSetter( this.componentClass );
+	}
+
+	@Override
+	protected void setComponentClass(Component component) {
+		this.componentClass = component.getComponentClass();
 	}
 
 	private static class ProxiedInstantiator implements Instantiator {
 		private final Class proxiedClass;
 		private final BasicProxyFactory factory;
 
-		public ProxiedInstantiator(Component component) {
-			proxiedClass = component.getComponentClass();
+		public ProxiedInstantiator(Class componentClass) {
+			proxiedClass = componentClass;
 			if ( proxiedClass.isInterface() ) {
 				factory = Environment.getBytecodeProvider()
 						.getProxyFactoryFactory()

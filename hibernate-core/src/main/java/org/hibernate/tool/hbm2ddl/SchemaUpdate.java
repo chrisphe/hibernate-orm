@@ -1,57 +1,45 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2008-2011, Red Hat Inc. or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Inc.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.tool.hbm2ddl;
 
+import java.io.File;
 import java.io.FileInputStream;
-import java.io.FileWriter;
-import java.io.Writer;
-import java.sql.Connection;
-import java.sql.SQLException;
-import java.sql.Statement;
 import java.util.ArrayList;
+import java.util.EnumSet;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Properties;
 
-import org.jboss.logging.Logger;
-
-import org.hibernate.HibernateException;
-import org.hibernate.JDBCException;
-import org.hibernate.cfg.Configuration;
-import org.hibernate.cfg.Environment;
-import org.hibernate.cfg.NamingStrategy;
-import org.hibernate.dialect.Dialect;
-import org.hibernate.engine.jdbc.internal.FormatStyle;
-import org.hibernate.engine.jdbc.internal.Formatter;
-import org.hibernate.engine.jdbc.spi.JdbcServices;
-import org.hibernate.engine.jdbc.spi.SqlExceptionHelper;
-import org.hibernate.engine.jdbc.spi.SqlStatementLogger;
+import org.hibernate.boot.Metadata;
+import org.hibernate.boot.MetadataBuilder;
+import org.hibernate.boot.MetadataSources;
+import org.hibernate.boot.model.naming.ImplicitNamingStrategy;
+import org.hibernate.boot.model.naming.PhysicalNamingStrategy;
+import org.hibernate.boot.registry.BootstrapServiceRegistry;
+import org.hibernate.boot.registry.BootstrapServiceRegistryBuilder;
+import org.hibernate.boot.registry.StandardServiceRegistry;
+import org.hibernate.boot.registry.StandardServiceRegistryBuilder;
+import org.hibernate.boot.registry.selector.spi.StrategySelector;
+import org.hibernate.boot.spi.MetadataImplementor;
+import org.hibernate.cfg.AvailableSettings;
+import org.hibernate.engine.config.spi.ConfigurationService;
+import org.hibernate.internal.CoreLogging;
 import org.hibernate.internal.CoreMessageLogger;
-import org.hibernate.internal.util.ReflectHelper;
-import org.hibernate.internal.util.config.ConfigurationHelper;
+import org.hibernate.internal.log.DeprecationLogger;
 import org.hibernate.service.ServiceRegistry;
-import org.hibernate.service.ServiceRegistryBuilder;
-import org.hibernate.service.internal.StandardServiceRegistryImpl;
+import org.hibernate.tool.schema.TargetType;
+import org.hibernate.tool.schema.internal.ExceptionHandlerCollectingImpl;
+import org.hibernate.tool.schema.internal.ExceptionHandlerHaltImpl;
+import org.hibernate.tool.schema.spi.ExceptionHandler;
+import org.hibernate.tool.schema.spi.ExecutionOptions;
+import org.hibernate.tool.schema.spi.SchemaManagementTool;
+import org.hibernate.tool.schema.spi.SchemaManagementToolCoordinator;
+import org.hibernate.tool.schema.spi.TargetDescriptor;
 
 /**
  * A commandline tool to update a database schema. May also be called from inside an application.
@@ -60,236 +48,264 @@ import org.hibernate.service.internal.StandardServiceRegistryImpl;
  * @author Steve Ebersole
  */
 public class SchemaUpdate {
-    private static final CoreMessageLogger LOG = Logger.getMessageLogger(CoreMessageLogger.class, SchemaUpdate.class.getName());
-
-	private final Configuration configuration;
-	private final ConnectionHelper connectionHelper;
-	private final SqlStatementLogger sqlStatementLogger;
-	private final SqlExceptionHelper sqlExceptionHelper;
-	private final Dialect dialect;
+	private static final CoreMessageLogger LOG = CoreLogging.messageLogger( SchemaUpdate.class );
 
 	private final List<Exception> exceptions = new ArrayList<Exception>();
 
-	private Formatter formatter;
+	boolean haltOnError = false;
 
-	private boolean haltOnError = false;
-	private boolean format = true;
-	private String outputFile = null;
+	private String outputFile;
 	private String delimiter;
+	private boolean format;
 
-	public SchemaUpdate(Configuration cfg) throws HibernateException {
-		this( cfg, cfg.getProperties() );
+	public void execute(EnumSet<TargetType> targetTypes, Metadata metadata) {
+		execute( targetTypes, metadata, ( (MetadataImplementor) metadata ).getMetadataBuildingOptions().getServiceRegistry() );
 	}
 
-	public SchemaUpdate(Configuration configuration, Properties properties) throws HibernateException {
-		this.configuration = configuration;
-		this.dialect = Dialect.getDialect( properties );
-
-		Properties props = new Properties();
-		props.putAll( dialect.getDefaultProperties() );
-		props.putAll( properties );
-		this.connectionHelper = new ManagedProviderConnectionHelper( props );
-
-		this.sqlExceptionHelper = new SqlExceptionHelper();
-		this.sqlStatementLogger = new SqlStatementLogger( false, true );
-		this.formatter = FormatStyle.DDL.getFormatter();
-	}
-
-	public SchemaUpdate(ServiceRegistry serviceRegistry, Configuration cfg) throws HibernateException {
-		this.configuration = cfg;
-
-		final JdbcServices jdbcServices = serviceRegistry.getService( JdbcServices.class );
-		this.dialect = jdbcServices.getDialect();
-		this.connectionHelper = new SuppliedConnectionProviderConnectionHelper( jdbcServices.getConnectionProvider() );
-
-		this.sqlExceptionHelper = new SqlExceptionHelper();
-		this.sqlStatementLogger = jdbcServices.getSqlStatementLogger();
-		this.formatter = ( sqlStatementLogger.isFormat() ? FormatStyle.DDL : FormatStyle.NONE ).getFormatter();
-	}
-
-	private static StandardServiceRegistryImpl createServiceRegistry(Properties properties) {
-		Environment.verifyProperties( properties );
-		ConfigurationHelper.resolvePlaceHolders( properties );
-		return (StandardServiceRegistryImpl) new ServiceRegistryBuilder().applySettings( properties ).buildServiceRegistry();
-	}
-
-	public static void main(String[] args) {
-		try {
-			Configuration cfg = new Configuration();
-
-			boolean script = true;
-			// If true then execute db updates, otherwise just generate and display updates
-			boolean doUpdate = true;
-			String propFile = null;
-
-			for ( int i = 0; i < args.length; i++ ) {
-				if ( args[i].startsWith( "--" ) ) {
-					if ( args[i].equals( "--quiet" ) ) {
-						script = false;
-					}
-					else if ( args[i].startsWith( "--properties=" ) ) {
-						propFile = args[i].substring( 13 );
-					}
-					else if ( args[i].startsWith( "--config=" ) ) {
-						cfg.configure( args[i].substring( 9 ) );
-					}
-					else if ( args[i].startsWith( "--text" ) ) {
-						doUpdate = false;
-					}
-					else if ( args[i].startsWith( "--naming=" ) ) {
-						cfg.setNamingStrategy(
-								( NamingStrategy ) ReflectHelper.classForName( args[i].substring( 9 ) ).newInstance()
-						);
-					}
-				}
-				else {
-					cfg.addFile( args[i] );
-				}
-
-			}
-
-			if ( propFile != null ) {
-				Properties props = new Properties();
-				props.putAll( cfg.getProperties() );
-				props.load( new FileInputStream( propFile ) );
-				cfg.setProperties( props );
-			}
-
-			StandardServiceRegistryImpl serviceRegistry = createServiceRegistry( cfg.getProperties() );
-			try {
-				new SchemaUpdate( serviceRegistry, cfg ).execute( script, doUpdate );
-			}
-			finally {
-				serviceRegistry.destroy();
-			}
+	@SuppressWarnings("unchecked")
+	public void execute(EnumSet<TargetType> targetTypes, Metadata metadata, ServiceRegistry serviceRegistry) {
+		if ( targetTypes.isEmpty() ) {
+			LOG.debug( "Skipping SchemaExport as no targets were specified" );
+			return;
 		}
-		catch ( Exception e ) {
-            LOG.unableToRunSchemaUpdate(e);
-			e.printStackTrace();
-		}
-	}
-
-	/**
-	 * Execute the schema updates
-	 *
-	 * @param script print all DDL to the console
-	 */
-	public void execute(boolean script, boolean doUpdate) {
-		execute( Target.interpret( script, doUpdate ) );
-	}
-	
-	public void execute(Target target) {
-        LOG.runningHbm2ddlSchemaUpdate();
-
-		Connection connection = null;
-		Statement stmt = null;
-		Writer outputFileWriter = null;
 
 		exceptions.clear();
+		LOG.runningHbm2ddlSchemaUpdate();
+
+		Map config = new HashMap();
+		config.putAll( serviceRegistry.getService( ConfigurationService.class ).getSettings() );
+		config.put( AvailableSettings.HBM2DDL_DELIMITER, delimiter );
+		config.put( AvailableSettings.FORMAT_SQL, format );
+
+		final SchemaManagementTool tool = serviceRegistry.getService( SchemaManagementTool.class );
+
+		final ExceptionHandler exceptionHandler = haltOnError
+				? ExceptionHandlerHaltImpl.INSTANCE
+				: new ExceptionHandlerCollectingImpl();
+
+		final ExecutionOptions executionOptions = SchemaManagementToolCoordinator.buildExecutionOptions(
+				config,
+				exceptionHandler
+		);
+
+		final TargetDescriptor targetDescriptor = SchemaExport.buildTargetDescriptor( targetTypes, outputFile, serviceRegistry );
 
 		try {
-			DatabaseMetadata meta;
-			try {
-                LOG.fetchingDatabaseMetadata();
-				connectionHelper.prepare( true );
-				connection = connectionHelper.getConnection();
-				meta = new DatabaseMetadata( connection, dialect );
-				stmt = connection.createStatement();
-			}
-			catch ( SQLException sqle ) {
-				exceptions.add( sqle );
-                LOG.unableToGetDatabaseMetadata(sqle);
-				throw sqle;
-			}
-
-            LOG.updatingSchema();
-
-			if ( outputFile != null ) {
-                LOG.writingGeneratedSchemaToFile( outputFile );
-				outputFileWriter = new FileWriter( outputFile );
-			}
-
-			String[] sqlStrings = configuration.generateSchemaUpdateScript( dialect, meta );
-			for ( String sql : sqlStrings ) {
-				String formatted = formatter.format( sql );
-				try {
-					if ( delimiter != null ) {
-						formatted += delimiter;
-					}
-					if ( target.doScript() ) {
-						System.out.println( formatted );
-					}
-					if ( outputFile != null ) {
-						outputFileWriter.write( formatted + "\n" );
-					}
-					if ( target.doExport() ) {
-                        LOG.debug( sql );
-						stmt.executeUpdate( formatted );
-					}
-				}
-				catch ( SQLException e ) {
-					if ( haltOnError ) {
-						throw new JDBCException( "Error during DDL export", e );
-					}
-					exceptions.add( e );
-                    LOG.unsuccessful(sql);
-                    LOG.error(e.getMessage());
-				}
-			}
-
-            LOG.schemaUpdateComplete();
-
-		}
-		catch ( Exception e ) {
-			exceptions.add( e );
-            LOG.unableToCompleteSchemaUpdate(e);
+			tool.getSchemaMigrator( config ).doMigration( metadata, executionOptions, targetDescriptor );
 		}
 		finally {
-
-			try {
-				if ( stmt != null ) {
-					stmt.close();
-				}
-				connectionHelper.release();
-			}
-			catch ( Exception e ) {
-				exceptions.add( e );
-                LOG.unableToCloseConnection(e);
-			}
-			try {
-				if( outputFileWriter != null ) {
-					outputFileWriter.close();
-				}
-			}
-			catch(Exception e) {
-				exceptions.add(e);
-                LOG.unableToCloseConnection(e);
+			if ( exceptionHandler instanceof ExceptionHandlerCollectingImpl ) {
+				exceptions.addAll( ( (ExceptionHandlerCollectingImpl) exceptionHandler ).getExceptions() );
 			}
 		}
 	}
 
 	/**
-	 * Returns a List of all Exceptions which occured during the export.
+	 * Returns a List of all Exceptions which occurred during the export.
 	 *
-	 * @return A List containig the Exceptions occured during the export
+	 * @return A List containing the Exceptions occurred during the export
 	 */
 	public List getExceptions() {
 		return exceptions;
 	}
 
-	public void setHaltOnError(boolean haltOnError) {
+	public SchemaUpdate setHaltOnError(boolean haltOnError) {
 		this.haltOnError = haltOnError;
+		return this;
 	}
 
-	public void setFormat(boolean format) {
-		this.formatter = ( format ? FormatStyle.DDL : FormatStyle.NONE ).getFormatter();
+	public SchemaUpdate setFormat(boolean format) {
+		this.format = format;
+		return this;
 	}
 
-	public void setOutputFile(String outputFile) {
+	public SchemaUpdate setOutputFile(String outputFile) {
 		this.outputFile = outputFile;
+		return this;
 	}
 
-	public void setDelimiter(String delimiter) {
+	/**
+	 * Set the end of statement delimiter
+	 *
+	 * @param delimiter The delimiter
+	 *
+	 */
+	public SchemaUpdate setDelimiter(String delimiter) {
 		this.delimiter = delimiter;
+		return this;
+	}
+
+	public static void main(String[] args) {
+		try {
+			final CommandLineArgs parsedArgs = CommandLineArgs.parseCommandLineArgs( args );
+			final StandardServiceRegistry serviceRegistry = buildStandardServiceRegistry( parsedArgs );
+
+			try {
+				final MetadataImplementor metadata = buildMetadata( parsedArgs, serviceRegistry );
+
+				new SchemaUpdate()
+						.setOutputFile( parsedArgs.outputFile )
+						.setDelimiter( parsedArgs.delimiter )
+						.execute( parsedArgs.targetTypes, metadata, serviceRegistry );
+			}
+			finally {
+				StandardServiceRegistryBuilder.destroy( serviceRegistry );
+			}
+		}
+		catch (Exception e) {
+			LOG.unableToRunSchemaUpdate( e );
+			e.printStackTrace();
+		}
+	}
+
+	private static StandardServiceRegistry buildStandardServiceRegistry(CommandLineArgs parsedArgs) throws Exception {
+		final BootstrapServiceRegistry bsr = new BootstrapServiceRegistryBuilder().build();
+		final StandardServiceRegistryBuilder ssrBuilder = new StandardServiceRegistryBuilder( bsr );
+
+		if ( parsedArgs.cfgXmlFile != null ) {
+			ssrBuilder.configure( parsedArgs.cfgXmlFile );
+		}
+
+		if ( parsedArgs.propertiesFile != null ) {
+			Properties props = new Properties();
+			props.load( new FileInputStream( parsedArgs.propertiesFile ) );
+			ssrBuilder.applySettings( props );
+		}
+
+		return ssrBuilder.build();
+	}
+
+	private static MetadataImplementor buildMetadata(CommandLineArgs parsedArgs, ServiceRegistry serviceRegistry)
+			throws Exception {
+		final MetadataSources metadataSources = new MetadataSources( serviceRegistry );
+
+		for ( String filename : parsedArgs.hbmXmlFiles ) {
+			metadataSources.addFile( filename );
+		}
+
+		for ( String filename : parsedArgs.jarFiles ) {
+			metadataSources.addJar( new File( filename ) );
+		}
+
+
+		final MetadataBuilder metadataBuilder = metadataSources.getMetadataBuilder();
+		final StrategySelector strategySelector = serviceRegistry.getService( StrategySelector.class );
+		if ( parsedArgs.implicitNamingStrategyImplName != null ) {
+			metadataBuilder.applyImplicitNamingStrategy(
+					strategySelector.resolveStrategy(
+							ImplicitNamingStrategy.class,
+							parsedArgs.implicitNamingStrategyImplName
+					)
+			);
+		}
+		if ( parsedArgs.physicalNamingStrategyImplName != null ) {
+			metadataBuilder.applyPhysicalNamingStrategy(
+					strategySelector.resolveStrategy(
+							PhysicalNamingStrategy.class,
+							parsedArgs.physicalNamingStrategyImplName
+					)
+			);
+		}
+
+		return (MetadataImplementor) metadataBuilder.build();
+	}
+
+	private static class CommandLineArgs {
+		EnumSet<TargetType> targetTypes;
+
+		String propertiesFile = null;
+		String cfgXmlFile = null;
+		String outputFile = null;
+		String delimiter = null;
+
+		String implicitNamingStrategyImplName = null;
+		String physicalNamingStrategyImplName = null;
+
+		List<String> hbmXmlFiles = new ArrayList<String>();
+		List<String> jarFiles = new ArrayList<String>();
+
+		public static CommandLineArgs parseCommandLineArgs(String[] args) {
+			final CommandLineArgs parsedArgs = new CommandLineArgs();
+
+			String targetText = null;
+			boolean script = true;
+			boolean doUpdate = true;
+
+			for ( String arg : args ) {
+				if ( arg.startsWith( "--" ) ) {
+					if ( arg.equals( "--quiet" ) ) {
+						script = false;
+					}
+					else if ( arg.startsWith( "--text" ) ) {
+						doUpdate = false;
+					}
+					else if ( arg.startsWith( "--target=" ) ) {
+						targetText = arg.substring( 9 );
+					}
+					else if ( arg.startsWith( "--properties=" ) ) {
+						parsedArgs.propertiesFile = arg.substring( 13 );
+					}
+					else if ( arg.startsWith( "--config=" ) ) {
+						parsedArgs.cfgXmlFile = arg.substring( 9 );
+					}
+					else if ( arg.startsWith( "--output=" ) ) {
+						parsedArgs.outputFile = arg.substring( 9 );
+					}
+					else if ( arg.startsWith( "--naming=" ) ) {
+						DeprecationLogger.DEPRECATION_LOGGER.logDeprecatedNamingStrategyArgument();
+					}
+					else if ( arg.startsWith( "--delimiter=" ) ) {
+						parsedArgs.delimiter = arg.substring( 12 );
+					}
+					else if ( arg.startsWith( "--implicit-naming=" ) ) {
+						parsedArgs.implicitNamingStrategyImplName = arg.substring( 18 );
+					}
+					else if ( arg.startsWith( "--physical-naming=" ) ) {
+						parsedArgs.physicalNamingStrategyImplName = arg.substring( 18 );
+					}
+				}
+				else {
+					if ( arg.endsWith( ".jar" ) ) {
+						parsedArgs.jarFiles.add( arg );
+					}
+					else {
+						parsedArgs.hbmXmlFiles.add( arg );
+					}
+				}
+			}
+
+			if ( targetText == null ) {
+				parsedArgs.targetTypes = TargetTypeHelper.parseLegacyCommandLineOptions( script, doUpdate, parsedArgs.outputFile );
+			}
+			else {
+				if ( !script || !doUpdate ) {
+					LOG.warn( "--text or --quiet was used; prefer --target=none|(stdout|database|script)*" );
+				}
+				parsedArgs.targetTypes = TargetTypeHelper.parseCommandLineOptions( targetText );
+			}
+
+			return parsedArgs;
+		}
+	}
+
+	/**
+	 * Intended for test usage only.  Builds a Metadata using the same algorithm  as
+	 * {@link #main}
+	 *
+	 * @param args The "command line args"
+	 *
+	 * @return The built Metadata
+	 *
+	 * @throws Exception Problems building the Metadata
+	 */
+	public static MetadataImplementor buildMetadataFromMainArgs(String[] args) throws Exception {
+		final CommandLineArgs commandLineArgs = CommandLineArgs.parseCommandLineArgs( args );
+		StandardServiceRegistry serviceRegistry = buildStandardServiceRegistry( commandLineArgs );
+		try {
+			return buildMetadata( commandLineArgs, serviceRegistry );
+		}
+		finally {
+			StandardServiceRegistryBuilder.destroy( serviceRegistry );
+		}
 	}
 }

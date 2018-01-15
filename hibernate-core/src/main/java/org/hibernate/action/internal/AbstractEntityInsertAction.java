@@ -1,25 +1,8 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2011, Red Hat Inc. or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Inc.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.action.internal;
 
@@ -33,7 +16,7 @@ import org.hibernate.engine.internal.Versioning;
 import org.hibernate.engine.spi.CachedNaturalIdValueSource;
 import org.hibernate.engine.spi.EntityEntry;
 import org.hibernate.engine.spi.EntityKey;
-import org.hibernate.engine.spi.SessionImplementor;
+import org.hibernate.engine.spi.SharedSessionContractImplementor;
 import org.hibernate.engine.spi.Status;
 import org.hibernate.persister.entity.EntityPersister;
 
@@ -65,14 +48,16 @@ public abstract class AbstractEntityInsertAction extends EntityAction {
 			Object instance,
 			boolean isVersionIncrementDisabled,
 			EntityPersister persister,
-			SessionImplementor session) {
+			SharedSessionContractImplementor session) {
 		super( session, id, instance, persister );
 		this.state = state;
 		this.isVersionIncrementDisabled = isVersionIncrementDisabled;
 		this.isExecuted = false;
 		this.areTransientReferencesNullified = false;
 
-		handleNaturalIdPreSaveNotifications();
+		if ( id != null ) {
+			handleNaturalIdPreSaveNotifications();
+		}
 	}
 
 	/**
@@ -137,7 +122,7 @@ public abstract class AbstractEntityInsertAction extends EntityAction {
 	 */
 	public final void makeEntityManaged() {
 		nullifyTransientReferencesIfNotAlready();
-		Object version = Versioning.getVersion( getState(), getPersister() );
+		final Object version = Versioning.getVersion( getState(), getPersister() );
 		getSession().getPersistenceContext().addEntity(
 				getInstance(),
 				( getPersister().isMutable() ? Status.MANAGED : Status.READ_ONLY ),
@@ -147,8 +132,7 @@ public abstract class AbstractEntityInsertAction extends EntityAction {
 				LockMode.WRITE,
 				isExecuted,
 				getPersister(),
-				isVersionIncrementDisabled,
-				false
+				isVersionIncrementDisabled
 		);
 	}
 
@@ -166,12 +150,12 @@ public abstract class AbstractEntityInsertAction extends EntityAction {
 	protected abstract EntityKey getEntityKey();
 
 	@Override
-    public void afterDeserialize(SessionImplementor session) {
+	public void afterDeserialize(SharedSessionContractImplementor session) {
 		super.afterDeserialize( session );
 		// IMPL NOTE: non-flushed changes code calls this method with session == null...
 		// guard against NullPointerException
 		if ( session != null ) {
-			EntityEntry entityEntry = session.getPersistenceContext().getEntry( getInstance() );
+			final EntityEntry entityEntry = session.getPersistenceContext().getEntry( getInstance() );
 			this.state = entityEntry.getLoadedState();
 		}
 	}
@@ -192,12 +176,24 @@ public abstract class AbstractEntityInsertAction extends EntityAction {
 
 	/**
 	 * Handle sending notifications needed for natural-id after saving
+	 *
+	 * @param generatedId The generated entity identifier
 	 */
-	protected void handleNaturalIdPostSaveNotifications() {
+	public void handleNaturalIdPostSaveNotifications(Serializable generatedId) {
+		if ( isEarlyInsert() ) {
+			// with early insert, we still need to add a local (transactional) natural id cross-reference
+			getSession().getPersistenceContext().getNaturalIdHelper().manageLocalNaturalIdCrossReference(
+					getPersister(),
+					generatedId,
+					state,
+					null,
+					CachedNaturalIdValueSource.INSERT
+			);
+		}
 		// after save, we need to manage the shared cache entries
 		getSession().getPersistenceContext().getNaturalIdHelper().manageSharedNaturalIdCrossReference(
 				getPersister(),
-				getId(),
+				generatedId,
 				state,
 				null,
 				CachedNaturalIdValueSource.INSERT

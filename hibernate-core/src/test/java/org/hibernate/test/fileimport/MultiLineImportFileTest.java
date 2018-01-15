@@ -1,41 +1,29 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2011, Red Hat Inc. or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Inc.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.test.fileimport;
 
 import java.math.BigInteger;
-
-import org.junit.Test;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.SQLException;
 
 import org.hibernate.Session;
 import org.hibernate.Transaction;
 import org.hibernate.cfg.Configuration;
 import org.hibernate.cfg.Environment;
 import org.hibernate.dialect.H2Dialect;
+import org.hibernate.jdbc.Work;
+import org.hibernate.tool.hbm2ddl.MultipleLinesSqlCommandExtractor;
+
+import org.hibernate.testing.AfterClassOnce;
 import org.hibernate.testing.RequiresDialect;
 import org.hibernate.testing.TestForIssue;
 import org.hibernate.testing.junit4.BaseCoreFunctionalTestCase;
-import org.hibernate.tool.hbm2ddl.MultipleLinesSqlCommandExtractor;
+import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
@@ -73,7 +61,7 @@ public class MultiLineImportFileTest extends BaseCoreFunctionalTestCase {
 
 		final String multiLineText = (String) s.createSQLQuery( "SELECT text FROM test_data WHERE id = 2" )
 				.uniqueResult();
-		//  "Multi-line comment line 1\r\n-- line 2'\r\n/* line 3 */"
+		//  "Multi-line comment line 1\n-- line 2'\n/* line 3 */"
 		final String expected = String.format( "Multi-line comment line 1%n-- line 2'%n/* line 3 */" );
 		assertEquals( "Multi-line string inserted incorrectly", expected, multiLineText );
 
@@ -82,5 +70,28 @@ public class MultiLineImportFileTest extends BaseCoreFunctionalTestCase {
 
 		tx.commit();
 		s.close();
+	}
+
+	@AfterClassOnce
+	public void tearDown() {
+		final Session session = openSession();
+		session.getTransaction().begin();
+		session.doWork( new Work() {
+			@Override
+			public void execute(Connection connection) throws SQLException {
+				PreparedStatement statement = null;
+				try {
+					statement = connection.prepareStatement( "DROP TABLE test_data" );
+					statement.execute();
+				}
+				finally {
+					if ( statement != null ) {
+						statement.close();
+					}
+				}
+			}
+		} );
+		session.getTransaction().commit();
+		session.close();
 	}
 }

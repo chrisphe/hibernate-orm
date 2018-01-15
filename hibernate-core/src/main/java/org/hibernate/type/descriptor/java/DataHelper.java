@@ -1,25 +1,8 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2010, Red Hat Inc. or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Inc.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.type.descriptor.java;
 
@@ -30,19 +13,23 @@ import java.io.Reader;
 import java.io.StringReader;
 import java.sql.Clob;
 import java.sql.SQLException;
-
-import org.jboss.logging.Logger;
+import java.sql.SQLFeatureNotSupportedException;
 
 import org.hibernate.HibernateException;
+import org.hibernate.engine.jdbc.BinaryStream;
+import org.hibernate.engine.jdbc.internal.BinaryStreamImpl;
 import org.hibernate.internal.CoreMessageLogger;
-import org.hibernate.type.descriptor.BinaryStream;
+
+import org.jboss.logging.Logger;
 
 /**
  * A help for dealing with BLOB and CLOB data
  *
  * @author Steve Ebersole
  */
-public class DataHelper {
+public final class DataHelper {
+	private DataHelper() {
+	}
 
 	/** The size of the buffer we will use to deserialize larger streams */
 	private static final int BUFFER_SIZE = 1024 * 4;
@@ -267,23 +254,38 @@ public class DataHelper {
 	/**
 	 * Extract the contents of the given Clob as a string.
 	 *
-	 * @param reader The reader for the content
+	 * @param value The clob to to be extracted from
 	 *
 	 * @return The content as string
 	 */
 	public static String extractString(final Clob value) {
 		try {
-			Reader characterStream = value.getCharacterStream();
-			long length = value.length();
-			if ( length > Integer.MAX_VALUE ) {
-				return extractString( characterStream, Integer.MAX_VALUE );
-			}
-			else {
-				return extractString( characterStream, (int) length );
-			}
+			final Reader characterStream = value.getCharacterStream();
+			final long length = determineLengthForBufferSizing( value );
+			return length > Integer.MAX_VALUE
+					? extractString( characterStream, Integer.MAX_VALUE )
+					: extractString( characterStream, (int) length );
 		}
 		catch ( SQLException e ) {
 			throw new HibernateException( "Unable to access lob stream", e );
+		}
+	}
+
+	/**
+	 * Determine a buffer size for reading the underlying character stream.
+	 *
+	 * @param value The Clob value
+	 *
+	 * @return The appropriate buffer size ({@link java.sql.Clob#length()} by default.
+	 *
+	 * @throws SQLException
+	 */
+	private static long determineLengthForBufferSizing(Clob value) throws SQLException {
+		try {
+			return value.length();
+		}
+		catch ( SQLFeatureNotSupportedException e ) {
+			return BUFFER_SIZE;
 		}
 	}
 
@@ -294,7 +296,7 @@ public class DataHelper {
 	 * @param lengthHint the expected size of the full value
 	 * @return the buffer size
 	 */
-	private static final int getSuggestedBufferSize(final int lengthHint) {
+	private static int getSuggestedBufferSize(final int lengthHint) {
 		return Math.max( 1, Math.min( lengthHint , BUFFER_SIZE ) );
 	}
 }

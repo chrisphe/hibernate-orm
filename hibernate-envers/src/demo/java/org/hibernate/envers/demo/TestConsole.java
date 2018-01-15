@@ -1,26 +1,10 @@
 /*
- * Envers. http://www.jboss.org/envers
+ * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright 2008  Red Hat Middleware, LLC. All rights reserved.
- *
- * This copyrighted material is made available to anyone wishing to use,
- * modify, copy, or redistribute it subject to the terms and conditions
- * of the GNU Lesser General Public License, v. 2.1.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT A WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License, v.2.1 along with this distribution; if not, write to the Free
- * Software Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
- * 02110-1301, USA.
- *
- * Red Hat Author(s): Adam Warski
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.envers.demo;
-import java.io.File;
 import java.io.PrintStream;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -451,8 +435,6 @@ public class TestConsole {
     }
 
     public static void main(String[] args) {
-        String userDbFile = System.getProperty("java.io.tmpdir") + File.separator + "_versions_demo.db";
-
         Map<String, String> configurationOverrides = new HashMap<String, String>();
         EntityManagerFactory emf = Persistence.createEntityManagerFactory("ConsolePU", configurationOverrides);
         EntityManager entityManager = emf.createEntityManager();
@@ -461,7 +443,10 @@ public class TestConsole {
 
         System.out.println("");
         System.out.println("Welcome to EntityVersions demo!");
-        System.out.println("HSQLDB database file location: " + userDbFile);
+//      If you would like to use HSQLDB, uncomment relevant entries in
+//      hibernate-envers/src/demo/resources/META-INF/persistence.xml descriptor and add required JAR libraries.
+//        String userDbFile = System.getProperty("java.io.tmpdir") + File.separator + "_versions_demo.db";
+//        System.out.println("HSQLDB database file location: " + userDbFile);
 
         console.populateTestData();
         console.start();

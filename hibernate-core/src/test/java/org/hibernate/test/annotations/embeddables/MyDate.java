@@ -1,6 +1,7 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
+<<<<<<< HEAD
  * Copyright (c) 2012, Red Hat Inc. or third-party contributors as
  * indicated by the @author tags or express copyright attribution
  * statements applied by the authors.  All third-party contributions are
@@ -20,6 +21,10 @@
  * Free Software Foundation, Inc.
  * 51 Franklin Street, Fifth Floor
  * Boston, MA  02110-1301  USA
+=======
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
+>>>>>>> upstream/master
  */
 package org.hibernate.test.annotations.embeddables;
 

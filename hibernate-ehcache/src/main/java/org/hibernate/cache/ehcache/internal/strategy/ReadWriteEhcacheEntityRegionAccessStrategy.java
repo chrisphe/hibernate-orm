@@ -1,34 +1,21 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2011, Red Hat Inc. or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Inc.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.cache.ehcache.internal.strategy;
 
+import org.hibernate.boot.spi.SessionFactoryOptions;
 import org.hibernate.cache.CacheException;
 import org.hibernate.cache.ehcache.internal.regions.EhcacheEntityRegion;
+import org.hibernate.cache.internal.DefaultCacheKeysFactory;
 import org.hibernate.cache.spi.EntityRegion;
 import org.hibernate.cache.spi.access.EntityRegionAccessStrategy;
 import org.hibernate.cache.spi.access.SoftLock;
-import org.hibernate.cfg.Settings;
+import org.hibernate.engine.spi.SessionFactoryImplementor;
+import org.hibernate.engine.spi.SharedSessionContractImplementor;
+import org.hibernate.persister.entity.EntityPersister;
 
 /**
  * Ehcache specific read/write entity region access strategy
@@ -42,22 +29,26 @@ public class ReadWriteEhcacheEntityRegionAccessStrategy
 
 	/**
 	 * Create a read/write access strategy accessing the given entity region.
+	 *
+	 * @param region The wrapped region
+	 * @param settings The Hibernate settings
 	 */
-	public ReadWriteEhcacheEntityRegionAccessStrategy(EhcacheEntityRegion region, Settings settings) {
+	public ReadWriteEhcacheEntityRegionAccessStrategy(EhcacheEntityRegion region, SessionFactoryOptions settings) {
 		super( region, settings );
+	}
+
+	@Override
+	public EntityRegion getRegion() {
+		return region();
 	}
 
 	/**
 	 * {@inheritDoc}
-	 */
-	public EntityRegion getRegion() {
-		return region;
-	}
-
-	/**
+	 * <p/>
 	 * A no-op since this is an asynchronous cache access strategy.
 	 */
-	public boolean insert(Object key, Object value, Object version) throws CacheException {
+	@Override
+	public boolean insert(SharedSessionContractImplementor session, Object key, Object value, Object version) throws CacheException {
 		return false;
 	}
 
@@ -66,12 +57,13 @@ public class ReadWriteEhcacheEntityRegionAccessStrategy
 	 * <p/>
 	 * Inserts will only succeed if there is no existing value mapped to this key.
 	 */
-	public boolean afterInsert(Object key, Object value, Object version) throws CacheException {
-		region.writeLock( key );
+	@Override
+	public boolean afterInsert(SharedSessionContractImplementor session, Object key, Object value, Object version) throws CacheException {
+		region().writeLock( key );
 		try {
-			Lockable item = (Lockable) region.get( key );
+			final Lockable item = (Lockable) region().get( key );
 			if ( item == null ) {
-				region.put( key, new Item( value, version, region.nextTimestamp() ) );
+				region().put( key, new Item( value, version, region().nextTimestamp() ) );
 				return true;
 			}
 			else {
@@ -79,14 +71,17 @@ public class ReadWriteEhcacheEntityRegionAccessStrategy
 			}
 		}
 		finally {
-			region.writeUnlock( key );
+			region().writeUnlock( key );
 		}
 	}
 
 	/**
+	 * {@inheritDoc}
+	 * <p/>
 	 * A no-op since this is an asynchronous cache access strategy.
 	 */
-	public boolean update(Object key, Object value, Object currentVersion, Object previousVersion)
+	@Override
+	public boolean update(SharedSessionContractImplementor session, Object key, Object value, Object currentVersion, Object previousVersion)
 			throws CacheException {
 		return false;
 	}
@@ -98,21 +93,22 @@ public class ReadWriteEhcacheEntityRegionAccessStrategy
 	 * duration of this transaction.  It is important to also note that updates will fail if the soft-lock expired during
 	 * the course of this transaction.
 	 */
-	public boolean afterUpdate(Object key, Object value, Object currentVersion, Object previousVersion, SoftLock lock)
+	@Override
+	public boolean afterUpdate(SharedSessionContractImplementor session, Object key, Object value, Object currentVersion, Object previousVersion, SoftLock lock)
 			throws CacheException {
 		//what should we do with previousVersion here?
-		region.writeLock( key );
+		region().writeLock( key );
 		try {
-			Lockable item = (Lockable) region.get( key );
+			final Lockable item = (Lockable) region().get( key );
 
 			if ( item != null && item.isUnlockable( lock ) ) {
-				Lock lockItem = (Lock) item;
+				final Lock lockItem = (Lock) item;
 				if ( lockItem.wasLockedConcurrently() ) {
 					decrementLock( key, lockItem );
 					return false;
 				}
 				else {
-					region.put( key, new Item( value, currentVersion, region.nextTimestamp() ) );
+					region().put( key, new Item( value, currentVersion, region().nextTimestamp() ) );
 					return true;
 				}
 			}
@@ -122,7 +118,17 @@ public class ReadWriteEhcacheEntityRegionAccessStrategy
 			}
 		}
 		finally {
-			region.writeUnlock( key );
+			region().writeUnlock( key );
 		}
+	}
+
+	@Override
+	public Object generateCacheKey(Object id, EntityPersister persister, SessionFactoryImplementor factory, String tenantIdentifier) {
+		return DefaultCacheKeysFactory.staticCreateEntityKey(id, persister, factory, tenantIdentifier);
+	}
+
+	@Override
+	public Object getCacheKeyId(Object cacheKey) {
+		return DefaultCacheKeysFactory.staticGetEntityId(cacheKey);
 	}
 }

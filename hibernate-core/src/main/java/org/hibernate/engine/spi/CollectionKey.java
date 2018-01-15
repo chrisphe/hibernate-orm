@@ -1,25 +1,8 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2008-2011, Red Hat Inc. or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Inc.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.engine.spi;
 
@@ -62,34 +45,26 @@ public final class CollectionKey implements Serializable {
 
 	private CollectionKey(
 			String role,
-	        Serializable key,
-	        Type keyType,
-	        EntityMode entityMode,
-	        SessionFactoryImplementor factory) {
+			Serializable key,
+			Type keyType,
+			EntityMode entityMode,
+			SessionFactoryImplementor factory) {
 		this.role = role;
 		this.key = key;
 		this.keyType = keyType;
 		this.entityMode = entityMode;
 		this.factory = factory;
-		this.hashCode = generateHashCode(); //cache the hashcode
+		//cache the hash-code
+		this.hashCode = generateHashCode();
 	}
 
-	public boolean equals(Object other) {
-		CollectionKey that = (CollectionKey) other;
-		return that.role.equals(role) &&
-		       keyType.isEqual(that.key, key, factory);
-	}
-
-	public int generateHashCode() {
+	private int generateHashCode() {
 		int result = 17;
 		result = 37 * result + role.hashCode();
-		result = 37 * result + keyType.getHashCode(key, factory);
+		result = 37 * result + keyType.getHashCode( key, factory );
 		return result;
 	}
 
-	public int hashCode() {
-		return hashCode;
-	}
 
 	public String getRole() {
 		return role;
@@ -99,16 +74,38 @@ public final class CollectionKey implements Serializable {
 		return key;
 	}
 
+	@Override
 	public String toString() {
-		return "CollectionKey" +
-		       MessageHelper.collectionInfoString( factory.getCollectionPersister(role), key, factory );
+		return "CollectionKey"
+				+ MessageHelper.collectionInfoString( factory.getCollectionPersister( role ), key, factory );
 	}
+
+	@Override
+	public boolean equals(Object other) {
+		if ( this == other ) {
+			return true;
+		}
+		if ( other == null || getClass() != other.getClass() ) {
+			return false;
+		}
+
+		final CollectionKey that = (CollectionKey) other;
+		return that.role.equals( role )
+				&& keyType.isEqual( that.key, key, factory );
+	}
+
+	@Override
+	public int hashCode() {
+		return hashCode;
+	}
+
 
 	/**
 	 * Custom serialization routine used during serialization of a
 	 * Session/PersistenceContext for increased performance.
 	 *
 	 * @param oos The stream to which we should write the serial data.
+	 *
 	 * @throws java.io.IOException
 	 */
 	public void serialize(ObjectOutputStream oos) throws IOException {
@@ -124,19 +121,21 @@ public final class CollectionKey implements Serializable {
 	 *
 	 * @param ois The stream from which to read the entry.
 	 * @param session The session being deserialized.
+	 *
 	 * @return The deserialized CollectionKey
+	 *
 	 * @throws IOException
 	 * @throws ClassNotFoundException
 	 */
 	public static CollectionKey deserialize(
 			ObjectInputStream ois,
-	        SessionImplementor session) throws IOException, ClassNotFoundException {
+			SessionImplementor session) throws IOException, ClassNotFoundException {
 		return new CollectionKey(
-				( String ) ois.readObject(),
-		        ( Serializable ) ois.readObject(),
-		        ( Type ) ois.readObject(),
-		        EntityMode.parse( ( String ) ois.readObject() ),
-		        ( session == null ? null : session.getFactory() )
+				(String) ois.readObject(),
+				(Serializable) ois.readObject(),
+				(Type) ois.readObject(),
+				EntityMode.parse( (String) ois.readObject() ),
+				(session == null ? null : session.getFactory())
 		);
 	}
 }

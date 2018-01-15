@@ -1,27 +1,12 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2010, Red Hat Inc. or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Inc.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.annotations;
+
+import java.lang.annotation.Repeatable;
 import java.lang.annotation.Retention;
 import java.lang.annotation.Target;
 
@@ -29,31 +14,31 @@ import static java.lang.annotation.ElementType.TYPE;
 import static java.lang.annotation.RetentionPolicy.RUNTIME;
 
 /**
- * Complementary information to a table either primary or secondary
+ * Complementary information to a table either primary or secondary.
  *
  * @author Emmanuel Bernard
  */
 @Target({TYPE})
 @Retention(RUNTIME)
+@Repeatable(Tables.class)
 public @interface Table {
 	/**
-	 * name of the targeted table
+	 * name of the targeted table.
 	 */
 	String appliesTo();
 
 	/**
-	 * Indexes
+	 * Indexes.
 	 */
 	Index[] indexes() default {};
 
 	/**
-	 * define a table comment
+	 * define a table comment.
 	 */
 	String comment() default "";
 
 	/**
-	 * Defines the Foreign Key name of a secondary table
-	 * pointing back to the primary table
+	 * Defines the Foreign Key name of a secondary table pointing back to the primary table.
 	 */
 	ForeignKey foreignKey() default @ForeignKey( name="" );
 
@@ -86,21 +71,21 @@ public @interface Table {
 	boolean optional() default true;
 
 	/**
-	 * Defines a custom SQL insert statement
+	 * Defines a custom SQL insert statement.
 	 *
 	 * <b>Only applies to secondary tables</b>
 	 */
 	SQLInsert sqlInsert() default @SQLInsert(sql="");
 
 	/**
-	 * Defines a custom SQL update statement
+	 * Defines a custom SQL update statement.
 	 *
 	 * <b>Only applies to secondary tables</b>
 	 */
 	SQLUpdate sqlUpdate() default @SQLUpdate(sql="");
 
 	/**
-	 * Defines a custom SQL delete statement
+	 * Defines a custom SQL delete statement.
 	 *
 	 * <b>Only applies to secondary tables</b>
 	 */

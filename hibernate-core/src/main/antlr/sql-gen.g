@@ -27,8 +27,11 @@ options {
    /** the buffer resulting SQL statement is written to */
 	private StringBuilder buf = new StringBuilder();
 
+	private boolean captureExpression = false;
+	protected java.util.List<StringBuilder> exprs = new java.util.ArrayList<StringBuilder>(java.util.Arrays.asList(new StringBuilder()));
+
 	protected void out(String s) {
-		buf.append(s);
+		getStringBuilder().append( s );
 	}
 
 	/**
@@ -72,7 +75,7 @@ options {
 	}
 
 	protected StringBuilder getStringBuilder() {
-		return buf;
+		return captureExpression ? exprs.get(exprs.size() - 1) : buf;
 	}
 
 	protected void nyi(AST n) {
@@ -89,8 +92,40 @@ options {
 	      out(")");
 	}
 
-	protected void commaBetweenParameters(String comma) {
-		out(comma);
+	protected void betweenFunctionArguments() {
+		out( ", " );
+	}
+
+	protected void captureExpressionStart() {
+	    if ( captureExpression ) {
+            exprs.add( new StringBuilder() );
+	    } else {
+		    captureExpression = true;
+		}
+	}
+
+	protected void captureExpressionFinish() {
+	    // Capturing will only stop when we leave the last capture context
+	    if ( exprs.size() == 1 ) {
+		    captureExpression = false;
+		}
+	}
+
+	protected String resetCapture() {
+	    StringBuilder sb = exprs.remove( exprs.size() - 1 );
+		final String expression = sb.toString();
+		if ( exprs.isEmpty() ) {
+		    sb.setLength(0);
+		    exprs.add( sb );
+		}
+		return expression;
+	}
+
+	/**
+	 * Implementation note: This is just a stub. SqlGenerator contains the effective implementation.
+	 */
+	protected String renderOrderByElement(String expression, String order, String nulls) {
+		throw new UnsupportedOperationException("Concrete SQL generator should override this method.");
 	}
 }
 
@@ -152,9 +187,14 @@ whereClauseExpr
 	| booleanExpr[ false ]
 	;
 
-orderExprs
+orderExprs { String ordExp = null; String ordDir = null; String ordNul = null; }
 	// TODO: remove goofy space before the comma when we don't have to regression test anymore.
-	: ( expr ) (dir:orderDirection { out(" "); out(dir); })? ( {out(", "); } orderExprs)?
+	// Dialect is provided a hook to render each ORDER BY element, so the expression is being captured instead of
+	// printing to the SQL output directly. See Dialect#renderOrderByElement(String, String, String, NullPrecedence).
+	: { captureExpressionStart(); } ( expr ) { captureExpressionFinish(); ordExp = resetCapture(); }
+	    (dir:orderDirection { ordDir = #dir.getText(); })? (ordNul=nullOrdering)?
+	        { out( renderOrderByElement( ordExp, ordDir, ordNul ) ); }
+	    ( {out(", "); } orderExprs )?
 	;
 
 groupExprs
@@ -166,6 +206,15 @@ orderDirection
 	: ASCENDING
 	| DESCENDING
 	;
+
+nullOrdering returns [String nullOrdExp = null]
+    : NULLS fl:nullPrecedence { nullOrdExp = #fl.getText(); }
+    ;
+
+nullPrecedence
+    : FIRST
+    | LAST
+    ;
 
 whereExpr
 	// Expect the filter subtree, followed by the theta join subtree, followed by the HQL condition subtree.
@@ -208,7 +257,8 @@ selectExpr
 	| aggregate
 	| c:constant { out(c); }
 	| arithmeticExpr
-	| param:PARAM { out(param); }
+	| selectBooleanExpr[false]
+	| parameter
 	| sn:SQL_NODE { out(sn); }
 	| { out("("); } selectStatement { out(")"); }
 	;
@@ -255,6 +305,7 @@ fromTable
 	// Write the table node (from fragment) and all the join fragments associated with it.
 	: #( a:FROM_FRAGMENT  { out(a); } (tableJoin [ a ])* { fromFragmentSeparator(a); } )
 	| #( b:JOIN_FRAGMENT  { out(b); } (tableJoin [ b ])* { fromFragmentSeparator(b); } )
+	| #( e:ENTITY_JOIN    { out(e); } (tableJoin [ e ])* { fromFragmentSeparator(e); } )
 	;
 
 tableJoin [ AST parent ]
@@ -266,6 +317,11 @@ booleanOp[ boolean parens ]
 	: #(AND booleanExpr[true] { out(" and "); } booleanExpr[true])
 	| #(OR { if (parens) out("("); } booleanExpr[false] { out(" or "); } booleanExpr[false] { if (parens) out(")"); })
 	| #(NOT { out(" not ("); } booleanExpr[false] { out(")"); } )
+	;
+
+selectBooleanExpr[ boolean parens ]
+	: booleanOp [ parens ]
+	| comparisonExpr [ parens ]
 	;
 
 booleanExpr[ boolean parens ]
@@ -349,6 +405,7 @@ simpleExpr
 	| count
 	| parameter
 	| arithmeticExpr
+	| selectBooleanExpr[false]
 	;
 	
 constant
@@ -420,10 +477,20 @@ methodCall
 	: #(m:METHOD_CALL i:METHOD_NAME { beginFunctionTemplate(m,i); }
 	 ( #(EXPR_LIST (arguments)? ) )?
 	 { endFunctionTemplate(m); } )
+	| #( c:CAST { beginFunctionTemplate(c,c); } castExpression {betweenFunctionArguments();} castTargetType { endFunctionTemplate(c); } )
 	;
 
 arguments
-	: expr ( { commaBetweenParameters(", "); } expr )*
+	: expr ( { betweenFunctionArguments(); } expr )*
+	;
+
+castExpression
+	: selectExpr
+	| NULL { out("null"); }
+	;
+
+castTargetType
+	: i:IDENT { out(i); }
 	;
 
 parameter
@@ -436,6 +503,7 @@ addrExpr
 	| i:ALIAS_REF { out(i); }
 	| j:INDEX_OP { out(j); }
 	| v:RESULT_VARIABLE_REF { out(v); }
+	| mcr:mapComponentReference { out(mcr); }
 	;
 
 sqlToken

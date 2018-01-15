@@ -1,34 +1,17 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2010, Red Hat Inc. or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Inc.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.dialect;
+
 import java.sql.CallableStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Types;
 
 import org.hibernate.LockMode;
-import org.hibernate.MappingException;
 import org.hibernate.cfg.Environment;
 import org.hibernate.dialect.function.ConditionalParenthesisFunction;
 import org.hibernate.dialect.function.ConvertFunction;
@@ -38,6 +21,8 @@ import org.hibernate.dialect.function.SQLFunctionTemplate;
 import org.hibernate.dialect.function.StandardJDBCEscapeFunction;
 import org.hibernate.dialect.function.StandardSQLFunction;
 import org.hibernate.dialect.function.VarArgsSQLFunction;
+import org.hibernate.dialect.identity.Chache71IdentityColumnSupport;
+import org.hibernate.dialect.identity.IdentityColumnSupport;
 import org.hibernate.dialect.lock.LockingStrategy;
 import org.hibernate.dialect.lock.OptimisticForceIncrementLockingStrategy;
 import org.hibernate.dialect.lock.OptimisticLockingStrategy;
@@ -46,11 +31,16 @@ import org.hibernate.dialect.lock.PessimisticReadUpdateLockingStrategy;
 import org.hibernate.dialect.lock.PessimisticWriteUpdateLockingStrategy;
 import org.hibernate.dialect.lock.SelectLockingStrategy;
 import org.hibernate.dialect.lock.UpdateLockingStrategy;
+import org.hibernate.dialect.pagination.LimitHandler;
+import org.hibernate.dialect.pagination.TopLimitHandler;
 import org.hibernate.exception.internal.CacheSQLExceptionConversionDelegate;
 import org.hibernate.exception.spi.SQLExceptionConversionDelegate;
 import org.hibernate.exception.spi.TemplatedViolatedConstraintNameExtracter;
 import org.hibernate.exception.spi.ViolatedConstraintNameExtracter;
-import org.hibernate.id.IdentityGenerator;
+import org.hibernate.hql.spi.id.IdTableSupportStandardImpl;
+import org.hibernate.hql.spi.id.MultiTableBulkIdStrategy;
+import org.hibernate.hql.spi.id.global.GlobalTemporaryTableBulkIdStrategy;
+import org.hibernate.hql.spi.id.local.AfterUseAction;
 import org.hibernate.internal.util.StringHelper;
 import org.hibernate.persister.entity.Lockable;
 import org.hibernate.sql.CacheJoinFragment;
@@ -58,15 +48,11 @@ import org.hibernate.sql.JoinFragment;
 import org.hibernate.type.StandardBasicTypes;
 
 /**
- * Cach&eacute; 2007.1 dialect. This class is required in order to use Hibernate with Intersystems Cach&eacute; SQL.<br>
- * <br>
- * Compatible with Cach&eacute; 2007.1.
- * <br>
- * <head>
- * <title>Cach&eacute; and Hibernate</title>
- * </head>
- * <body>
- * <h1>Cach&eacute; and Hibernate</h1>
+ * Cach&eacute; 2007.1 dialect.
+ *
+ * This class is required in order to use Hibernate with Intersystems Cach&eacute; SQL.  Compatible with
+ * Cach&eacute; 2007.1.
+ *
  * <h2>PREREQUISITES</h2>
  * These setup instructions assume that both Cach&eacute; and Hibernate are installed and operational.
  * <br>
@@ -144,11 +130,9 @@ import org.hibernate.type.StandardBasicTypes;
  * </tr>
  * </table>
  * <p/>
- * <dl>
- * <dt><b>Note 1</b></dt>
- * <dd>Please contact your administrator for the userid and password you should use when attempting access via JDBC.
- * By default, these are chosen to be "_SYSTEM" and "SYS" respectively as noted in the SQL standard.</dd>
- * </dl>
+ * <b>NOTE:</b> Please contact your administrator for the userid and password you should use when
+ *         attempting access via JDBC.  By default, these are chosen to be "_SYSTEM" and "SYS" respectively
+ *         as noted in the SQL standard.
  * <br>
  * <h2>CACH&Eacute; VERSION URL</h2>
  * This is the standard URL for the JDBC driver.
@@ -214,6 +198,8 @@ import org.hibernate.type.StandardBasicTypes;
 
 public class Cache71Dialect extends Dialect {
 
+	private LimitHandler limitHandler;
+
 	/**
 	 * Creates new <code>Cache71Dialect</code> instance. Sets up the JDBC /
 	 * Cach&eacute; type mappings.
@@ -222,6 +208,7 @@ public class Cache71Dialect extends Dialect {
 		super();
 		commonRegistration();
 		register71Functions();
+		this.limitHandler = new TopLimitHandler( true, true );
 	}
 
 	protected final void commonRegistration() {
@@ -239,16 +226,14 @@ public class Cache71Dialect extends Dialect {
 		registerColumnType( Types.DOUBLE, "double" );
 		registerColumnType( Types.FLOAT, "float" );
 		registerColumnType( Types.INTEGER, "integer" );
-		registerColumnType( Types.LONGVARBINARY, "longvarbinary" );	// binary %Stream
-		registerColumnType( Types.LONGVARCHAR, "longvarchar" );		// character %Stream
+		registerColumnType( Types.LONGVARBINARY, "longvarbinary" );
+		registerColumnType( Types.LONGVARCHAR, "longvarchar" );
 		registerColumnType( Types.NUMERIC, "numeric($p,$s)" );
 		registerColumnType( Types.REAL, "real" );
 		registerColumnType( Types.SMALLINT, "smallint" );
 		registerColumnType( Types.TIMESTAMP, "timestamp" );
 		registerColumnType( Types.TIME, "time" );
 		registerColumnType( Types.TINYINT, "tinyint" );
-		// TBD should this be varbinary($1)?
-		//		registerColumnType(Types.VARBINARY,     "binary($1)");
 		registerColumnType( Types.VARBINARY, "longvarbinary" );
 		registerColumnType( Types.VARCHAR, "varchar($l)" );
 		registerColumnType( Types.BLOB, "longvarbinary" );
@@ -256,7 +241,6 @@ public class Cache71Dialect extends Dialect {
 
 		getDefaultProperties().setProperty( Environment.USE_STREAMS_FOR_BINARY, "false" );
 		getDefaultProperties().setProperty( Environment.STATEMENT_BATCH_SIZE, DEFAULT_BATCH_SIZE );
-		//getDefaultProperties().setProperty(Environment.STATEMENT_BATCH_SIZE, NO_BATCH);
 
 		getDefaultProperties().setProperty( Environment.USE_SQL_COMMENTS, "false" );
 
@@ -267,7 +251,6 @@ public class Cache71Dialect extends Dialect {
 		registerFunction( "asin", new StandardJDBCEscapeFunction( "asin", StandardBasicTypes.DOUBLE ) );
 		registerFunction( "atan", new StandardJDBCEscapeFunction( "atan", StandardBasicTypes.DOUBLE ) );
 		registerFunction( "bit_length", new SQLFunctionTemplate( StandardBasicTypes.INTEGER, "($length(?1)*8)" ) );
-		// hibernate impelemnts cast in Dialect.java
 		registerFunction( "ceiling", new StandardSQLFunction( "ceiling", StandardBasicTypes.INTEGER ) );
 		registerFunction( "char", new StandardJDBCEscapeFunction( "char", StandardBasicTypes.CHARACTER ) );
 		registerFunction( "character_length", new StandardSQLFunction( "character_length", StandardBasicTypes.INTEGER ) );
@@ -311,9 +294,6 @@ public class Cache71Dialect extends Dialect {
 		registerFunction( "left", new StandardJDBCEscapeFunction( "left", StandardBasicTypes.STRING ) );
 		registerFunction( "len", new StandardSQLFunction( "len", StandardBasicTypes.INTEGER ) );
 		registerFunction( "$length", new VarArgsSQLFunction( "$length(", ",", ")" ) );
-		// aggregate functions shouldn't be registered, right?
-		//registerFunction( "list", new StandardSQLFunction("list",StandardBasicTypes.STRING) );
-		// stopped on $list
 		registerFunction( "$list", new VarArgsSQLFunction( "$list(", ",", ")" ) );
 		registerFunction( "$listdata", new VarArgsSQLFunction( "$listdata(", ",", ")" ) );
 		registerFunction( "$listfind", new VarArgsSQLFunction( "$listfind(", ",", ")" ) );
@@ -391,26 +371,20 @@ public class Cache71Dialect extends Dialect {
 
 	// DDL support ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+	@Override
 	public boolean hasAlterTable() {
 		// Does this dialect support the ALTER TABLE syntax?
 		return true;
 	}
 
+	@Override
 	public boolean qualifyIndexName() {
 		// Do we need to qualify index names with the schema name?
 		return false;
 	}
 
-	public boolean supportsUnique() {
-		// Does this dialect support the UNIQUE column syntax?
-		return true;
-	}
-
-	/**
-	 * The syntax used to add a foreign key constraint to a table.
-	 *
-	 * @return String
-	 */
+	@Override
+	@SuppressWarnings("StringBufferReplaceableByString")
 	public String getAddForeignKeyConstraintString(
 			String constraintName,
 			String[] foreignKey,
@@ -424,97 +398,87 @@ public class Cache71Dialect extends Dialect {
 				.append( " FOREIGN KEY " )
 				.append( constraintName )
 				.append( " (" )
-				.append( StringHelper.join( ", ", foreignKey ) )	// identifier-commalist
+				.append( StringHelper.join( ", ", foreignKey ) )
 				.append( ") REFERENCES " )
 				.append( referencedTable )
 				.append( " (" )
-				.append( StringHelper.join( ", ", primaryKey ) ) // identifier-commalist
+				.append( StringHelper.join( ", ", primaryKey ) )
 				.append( ") " )
 				.toString();
 	}
 
+	/**
+	 * Does this dialect support check constraints?
+	 *
+	 * @return {@code false} (Cache does not support check constraints)
+	 */
+	@SuppressWarnings("UnusedDeclaration")
 	public boolean supportsCheck() {
-		// Does this dialect support check constraints?
 		return false;
 	}
 
+	@Override
 	public String getAddColumnString() {
 		// The syntax used to add a column to a table
 		return " add column";
 	}
 
+	@Override
 	public String getCascadeConstraintsString() {
 		// Completely optional cascading drop clause.
 		return "";
 	}
 
+	@Override
 	public boolean dropConstraints() {
 		// Do we need to drop constraints before dropping tables in this dialect?
 		return true;
 	}
 
+	@Override
 	public boolean supportsCascadeDelete() {
 		return true;
 	}
 
+	@Override
 	public boolean hasSelfReferentialForeignKeyBug() {
 		return true;
 	}
 
-	// temporary table support ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+	@Override
+	public MultiTableBulkIdStrategy getDefaultMultiTableBulkIdStrategy() {
+		return new GlobalTemporaryTableBulkIdStrategy(
+				new IdTableSupportStandardImpl() {
+					@Override
+					public String generateIdTableName(String baseName) {
+						final String name = super.generateIdTableName( baseName );
+						return name.length() > 25 ? name.substring( 1, 25 ) : name;
+					}
 
-	public boolean supportsTemporaryTables() {
-		return true;
+					@Override
+					public String getCreateIdTableCommand() {
+						return "create global temporary table";
+					}
+				},
+				AfterUseAction.DROP
+		);
 	}
 
-	public String generateTemporaryTableName(String baseTableName) {
-		String name = super.generateTemporaryTableName( baseTableName );
-		return name.length() > 25 ? name.substring( 1, 25 ) : name;
-	}
-
-	public String getCreateTemporaryTableString() {
-		return "create global temporary table";
-	}
-
-	public Boolean performTemporaryTableDDLInIsolation() {
-		return Boolean.FALSE;
-	}
-
-	public String getCreateTemporaryTablePostfix() {
-		return "";
-	}
-
-	public boolean dropTemporaryTableAfterUse() {
-		return true;
+	@Override
+	public String getNativeIdentifierGeneratorStrategy() {
+		return "identity";
 	}
 
 	// IDENTITY support ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-	public boolean supportsIdentityColumns() {
-		return true;
-	}
-
-	public Class getNativeIdentifierGeneratorClass() {
-		return IdentityGenerator.class;
-	}
-
-	public boolean hasDataTypeInIdentityColumn() {
-		// Whether this dialect has an Identity clause added to the data type or a completely seperate identity
-		// data type
-		return true;
-	}
-
-	public String getIdentityColumnString() throws MappingException {
-		// The keyword used to specify an identity column, if identity column key generation is supported.
-		return "identity";
-	}
-
-	public String getIdentitySelectString() {
-		return "SELECT LAST_IDENTITY() FROM %TSQL_sys.snf";
+	@Override
+	public IdentityColumnSupport getIdentityColumnSupport() {
+		return new Chache71IdentityColumnSupport();
 	}
 
 	// SEQUENCE support ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+	@Override
 	public boolean supportsSequences() {
 		return false;
 	}
@@ -544,25 +508,12 @@ public class Cache71Dialect extends Dialect {
 
 	// lock acquisition support ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-	public boolean supportsForUpdate() {
-		// Does this dialect support the FOR UPDATE syntax?
-		return false;
-	}
-
-	public boolean supportsForUpdateOf() {
-		// Does this dialect support FOR UPDATE OF, allowing particular rows to be locked?
-		return false;
-	}
-
-	public boolean supportsForUpdateNowait() {
-		// Does this dialect support the Oracle-style FOR UPDATE NOWAIT syntax?
-		return false;
-	}
-
+	@Override
 	public boolean supportsOuterJoinForUpdate() {
 		return false;
 	}
 
+	@Override
 	public LockingStrategy getLockingStrategy(Lockable lockable, LockMode lockMode) {
 		// InterSystems Cache' does not current support "SELECT ... FOR UPDATE" syntax...
 		// Set your transaction mode to READ_COMMITTED before using
@@ -591,28 +542,48 @@ public class Cache71Dialect extends Dialect {
 
 	// LIMIT support (ala TOP) ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+	@Override
+	public LimitHandler getLimitHandler() {
+		if ( isLegacyLimitHandlerBehaviorEnabled() ) {
+			return super.getLimitHandler();
+		}
+		return limitHandler;
+	}
+
+	@Override
+	@SuppressWarnings("deprecation")
 	public boolean supportsLimit() {
 		return true;
 	}
 
+	@Override
+	@SuppressWarnings("deprecation")
 	public boolean supportsLimitOffset() {
 		return false;
 	}
 
+	@Override
+	@SuppressWarnings("deprecation")
 	public boolean supportsVariableLimit() {
 		return true;
 	}
 
+	@Override
+	@SuppressWarnings("deprecation")
 	public boolean bindLimitParametersFirst() {
 		// Does the LIMIT clause come at the start of the SELECT statement, rather than at the end?
 		return true;
 	}
 
+	@Override
+	@SuppressWarnings("deprecation")
 	public boolean useMaxForLimit() {
 		// Does the LIMIT clause take a "maximum" row number instead of a total number of returned rows?
 		return true;
 	}
 
+	@Override
+	@SuppressWarnings("deprecation")
 	public String getLimitString(String sql, boolean hasOffset) {
 		if ( hasOffset ) {
 			throw new UnsupportedOperationException( "query result offset is not supported" );
@@ -620,7 +591,7 @@ public class Cache71Dialect extends Dialect {
 
 		// This does not support the Cache SQL 'DISTINCT BY (comma-list)' extensions,
 		// but this extension is not supported through Hibernate anyway.
-		int insertionPoint = sql.startsWith( "select distinct" ) ? 15 : 6;
+		final int insertionPoint = sql.startsWith( "select distinct" ) ? 15 : 6;
 
 		return new StringBuilder( sql.length() + 8 )
 				.append( sql )
@@ -630,54 +601,60 @@ public class Cache71Dialect extends Dialect {
 
 	// callable statement support ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+	@Override
 	public int registerResultSetOutParameter(CallableStatement statement, int col) throws SQLException {
 		return col;
 	}
 
+	@Override
 	public ResultSet getResultSet(CallableStatement ps) throws SQLException {
 		ps.execute();
-		return ( ResultSet ) ps.getObject( 1 );
+		return (ResultSet) ps.getObject( 1 );
 	}
 
 	// miscellaneous support ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+	@Override
 	public String getLowercaseFunction() {
 		// The name of the SQL function that transforms a string to lowercase
 		return "lower";
 	}
 
+	@Override
 	public String getNullColumnString() {
 		// The keyword used to specify a nullable column.
 		return " null";
 	}
 
+	@Override
 	public JoinFragment createOuterJoinFragment() {
 		// Create an OuterJoinGenerator for this dialect.
 		return new CacheJoinFragment();
 	}
 
+	@Override
 	public String getNoColumnsInsertString() {
 		// The keyword used to insert a row without specifying
 		// any column values
 		return " default values";
 	}
 
+	@Override
 	public SQLExceptionConversionDelegate buildSQLExceptionConversionDelegate() {
 		return new CacheSQLExceptionConversionDelegate( this );
 	}
 
+	@Override
 	public ViolatedConstraintNameExtracter getViolatedConstraintNameExtracter() {
 		return EXTRACTER;
 	}
 
+	/**
+	 * The Cache ViolatedConstraintNameExtracter.
+	 */
 	public static final ViolatedConstraintNameExtracter EXTRACTER = new TemplatedViolatedConstraintNameExtracter() {
-		/**
-		 * Extract the name of the violated constraint from the given SQLException.
-		 *
-		 * @param sqle The exception that was the result of the constraint violation.
-		 * @return The extracted constraint name.
-		 */
-		public String extractConstraintName(SQLException sqle) {
+		@Override
+		protected String doExtractConstraintName(SQLException sqle) throws NumberFormatException {
 			return extractUsingTemplate( "constraint (", ") violated", sqle.getMessage() );
 		}
 	};
@@ -685,14 +662,17 @@ public class Cache71Dialect extends Dialect {
 
 	// Overridden informational metadata ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+	@Override
 	public boolean supportsEmptyInList() {
 		return false;
 	}
 
+	@Override
 	public boolean areStringComparisonsCaseInsensitive() {
 		return true;
 	}
 
+	@Override
 	public boolean supportsResultSetPositionQueryMethodsOnForwardOnlyCursor() {
 		return false;
 	}

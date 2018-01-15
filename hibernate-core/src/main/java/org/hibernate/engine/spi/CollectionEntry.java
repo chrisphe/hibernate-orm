@@ -1,25 +1,8 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2008-2011, Red Hat Inc. or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Inc.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.engine.spi;
 
@@ -29,12 +12,12 @@ import java.io.ObjectOutputStream;
 import java.io.Serializable;
 import java.util.Collection;
 
-import org.jboss.logging.Logger;
-
 import org.hibernate.AssertionFailure;
 import org.hibernate.HibernateException;
 import org.hibernate.MappingException;
+import org.hibernate.collection.internal.AbstractPersistentCollection;
 import org.hibernate.collection.spi.PersistentCollection;
+import org.hibernate.internal.CoreLogging;
 import org.hibernate.internal.CoreMessageLogger;
 import org.hibernate.persister.collection.CollectionPersister;
 import org.hibernate.pretty.MessageHelper;
@@ -46,8 +29,7 @@ import org.hibernate.pretty.MessageHelper;
  * @author Gavin King
  */
 public final class CollectionEntry implements Serializable {
-
-    private static final CoreMessageLogger LOG = Logger.getMessageLogger(CoreMessageLogger.class, CollectionEntry.class.getName());
+	private static final CoreMessageLogger LOG = CoreLogging.messageLogger( CollectionEntry.class );
 
 	//ATTRIBUTES MAINTAINED BETWEEN FLUSH CYCLES
 
@@ -138,7 +120,7 @@ public final class CollectionEntry implements Serializable {
 		ignore = false;
 
 		loadedKey = collection.getKey();
-		setLoadedPersister( factory.getCollectionPersister( collection.getRole() ) );
+		setLoadedPersister( factory.getMetamodel().collectionPersister( collection.getRole() ) );
 
 		snapshot = collection.getStoredSnapshot();
 	}
@@ -151,9 +133,9 @@ public final class CollectionEntry implements Serializable {
 	 */
 	private CollectionEntry(
 			String role,
-	        Serializable snapshot,
-	        Serializable loadedKey,
-	        SessionFactoryImplementor factory) {
+			Serializable snapshot,
+			Serializable loadedKey,
+			SessionFactoryImplementor factory) {
 		this.role = role;
 		this.snapshot = snapshot;
 		this.loadedKey = loadedKey;
@@ -182,36 +164,48 @@ public final class CollectionEntry implements Serializable {
 	}
 
 	public void preFlush(PersistentCollection collection) throws HibernateException {
+		if ( loadedKey == null && collection.getKey() != null ) {
+			loadedKey = collection.getKey();
+		}
 
-		boolean nonMutableChange = collection.isDirty() &&
-				getLoadedPersister()!=null &&
-				!getLoadedPersister().isMutable();
-		if (nonMutableChange) {
+		boolean nonMutableChange = collection.isDirty()
+				&& getLoadedPersister() != null
+				&& !getLoadedPersister().isMutable();
+		if ( nonMutableChange ) {
 			throw new HibernateException(
 					"changed an immutable collection instance: " +
 					MessageHelper.collectionInfoString( getLoadedPersister().getRole(), getLoadedKey() )
-				);
+			);
 		}
 
-		dirty(collection);
+		dirty( collection );
 
 		if ( LOG.isDebugEnabled() && collection.isDirty() && getLoadedPersister() != null ) {
-			LOG.debugf( "Collection dirty: %s",
-					MessageHelper.collectionInfoString( getLoadedPersister().getRole(), getLoadedKey() ) );
+			LOG.debugf(
+					"Collection dirty: %s",
+					MessageHelper.collectionInfoString( getLoadedPersister().getRole(), getLoadedKey() )
+			);
 		}
 
-		setDoupdate(false);
-		setDoremove(false);
-		setDorecreate(false);
-		setReached(false);
-		setProcessed(false);
+		setReached( false );
+		setProcessed( false );
+
+		setDoupdate( false );
+		setDoremove( false );
+		setDorecreate( false );
 	}
 
 	public void postInitialize(PersistentCollection collection) throws HibernateException {
-		snapshot = getLoadedPersister().isMutable() ?
-				collection.getSnapshot( getLoadedPersister() ) :
-				null;
+		snapshot = getLoadedPersister().isMutable()
+				? collection.getSnapshot( getLoadedPersister() )
+				: null;
 		collection.setSnapshot(loadedKey, role, snapshot);
+		if ( getLoadedPersister().getBatchSize() > 1 ) {
+			( (AbstractPersistentCollection) collection ).getSession()
+					.getPersistenceContext()
+					.getBatchFetchQueue()
+					.removeBatchLoadableCollection( this );
+		}
 	}
 
 	/**
@@ -222,7 +216,7 @@ public final class CollectionEntry implements Serializable {
 			ignore = false;
 		}
 		else if ( !isProcessed() ) {
-			throw new AssertionFailure( "collection [" + collection.getRole() + "] was not processed by flush()" );
+			throw new HibernateException( LOG.collectionNotProcessedByFlush( collection.getRole() ) );
 		}
 		collection.setSnapshot(loadedKey, role, snapshot);
 	}
@@ -257,13 +251,34 @@ public final class CollectionEntry implements Serializable {
 		return snapshot;
 	}
 
+	private boolean fromMerge;
+
+	/**
+	 * Reset the stored snapshot for both the persistent collection and this collection entry. 
+	 * Used during the merge of detached collections.
+	 * 
+	 * @param collection the persistentcollection to be updated
+	 * @param storedSnapshot the new stored snapshot
+	 */
+	public void resetStoredSnapshot(PersistentCollection collection, Serializable storedSnapshot) {
+		LOG.debugf("Reset storedSnapshot to %s for %s", storedSnapshot, this);
+
+		if ( fromMerge ) {
+			return; // EARLY EXIT!
+		}
+
+		snapshot = storedSnapshot;
+		collection.setSnapshot( loadedKey, role, snapshot );
+		fromMerge = true;
+	}
+
 	private void setLoadedPersister(CollectionPersister persister) {
 		loadedPersister = persister;
 		setRole( persister == null ? null : persister.getRole() );
 	}
 
 	void afterDeserialize(SessionFactoryImplementor factory) {
-		loadedPersister = ( factory == null ? null : factory.getCollectionPersister(role) );
+		loadedPersister = ( factory == null ? null : factory.getMetamodel().collectionPersister( role ) );
 	}
 
 	public boolean wasDereferenced() {
@@ -350,10 +365,10 @@ public final class CollectionEntry implements Serializable {
 	}
 
 	@Override
-    public String toString() {
+	public String toString() {
 		String result = "CollectionEntry" +
 				MessageHelper.collectionInfoString( loadedPersister.getRole(), loadedKey );
-		if (currentPersister!=null) {
+		if ( currentPersister != null ) {
 			result += "->" +
 					MessageHelper.collectionInfoString( currentPersister.getRole(), currentKey );
 		}
@@ -401,18 +416,20 @@ public final class CollectionEntry implements Serializable {
 	 *
 	 * @param ois The stream from which to read the entry.
 	 * @param session The session being deserialized.
+	 *
 	 * @return The deserialized CollectionEntry
+	 *
 	 * @throws IOException
 	 * @throws ClassNotFoundException
 	 */
 	public static CollectionEntry deserialize(
 			ObjectInputStream ois,
-	        SessionImplementor session) throws IOException, ClassNotFoundException {
+			SessionImplementor session) throws IOException, ClassNotFoundException {
 		return new CollectionEntry(
-				( String ) ois.readObject(),
-		        ( Serializable ) ois.readObject(),
-		        ( Serializable ) ois.readObject(),
-		        ( session == null ? null : session.getFactory() )
+				(String) ois.readObject(),
+				(Serializable) ois.readObject(),
+				(Serializable) ois.readObject(),
+				(session == null ? null : session.getFactory())
 		);
 	}
 }

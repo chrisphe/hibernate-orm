@@ -1,25 +1,8 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2008-2011, Red Hat Inc. or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Inc.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.cache.spi;
 
@@ -39,7 +22,7 @@ public interface Region {
 	 *
 	 * @return The region name
 	 */
-	public String getName();
+	String getName();
 
 	/**
 	 * The "end state" contract of the region's lifecycle.  Called
@@ -48,7 +31,7 @@ public interface Region {
 	 *
 	 * @throws org.hibernate.cache.CacheException Indicates problem shutting down
 	 */
-	public void destroy() throws CacheException;
+	void destroy() throws CacheException;
 
 	/**
 	 * Determine whether this region contains data for the given key.
@@ -62,7 +45,7 @@ public interface Region {
 	 * @return True if the underlying cache contains corresponding data; false
 	 * otherwise.
 	 */
-	public boolean contains(Object key);
+	boolean contains(Object key);
 
 	/**
 	 * The number of bytes is this cache region currently consuming in memory.
@@ -70,21 +53,21 @@ public interface Region {
 	 * @return The number of bytes consumed by this region; -1 if unknown or
 	 * unsupported.
 	 */
-	public long getSizeInMemory();
+	long getSizeInMemory();
 
 	/**
 	 * The count of entries currently contained in the regions in-memory store.
 	 *
 	 * @return The count of entries in memory; -1 if unknown or unsupported.
 	 */
-	public long getElementCountInMemory();
+	long getElementCountInMemory();
 
 	/**
 	 * The count of entries currently contained in the regions disk store.
 	 *
 	 * @return The count of entries on disk; -1 if unknown or unsupported.
 	 */
-	public long getElementCountOnDisk();
+	long getElementCountOnDisk();
 
 	/**
 	 * Get the contents of this region as a map.
@@ -94,10 +77,23 @@ public interface Region {
 	 *
 	 * @return The content map.
 	 */
-	public Map toMap();
+	Map toMap();
 
-	public long nextTimestamp();
+	/**
+	 * Get the next timestamp according to the underlying cache implementor.
+	 *
+	 * @todo Document the usages of this method so providers know exactly what is expected.
+	 *
+	 * @return The next timestamp
+	 */
+	long nextTimestamp();
 
-	//we really should change this return type to `long` instead of `int`
-	public int getTimeout();
+	/**
+	 * Get a timeout value.
+	 *
+	 * @todo Again, document the usages of this method so providers know exactly what is expected.
+	 *
+	 * @return The time out value
+	 */
+	int getTimeout();
 }

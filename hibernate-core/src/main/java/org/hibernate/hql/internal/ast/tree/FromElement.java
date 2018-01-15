@@ -1,34 +1,17 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2008, Red Hat Middleware LLC or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Middleware LLC.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
- *
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.hql.internal.ast.tree;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedList;
 import java.util.List;
-
-import org.jboss.logging.Logger;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 import org.hibernate.QueryException;
 import org.hibernate.engine.internal.JoinSequence;
@@ -38,8 +21,10 @@ import org.hibernate.hql.internal.antlr.SqlTokenTypes;
 import org.hibernate.hql.internal.ast.TypeDiscriminatorMetadata;
 import org.hibernate.hql.internal.ast.util.ASTUtil;
 import org.hibernate.hql.spi.QueryTranslator;
+import org.hibernate.internal.CoreLogging;
 import org.hibernate.internal.CoreMessageLogger;
 import org.hibernate.internal.util.StringHelper;
+import org.hibernate.param.DynamicFilterParameterSpecification;
 import org.hibernate.param.ParameterSpecification;
 import org.hibernate.persister.collection.QueryableCollection;
 import org.hibernate.persister.entity.DiscriminatorMetadata;
@@ -62,8 +47,7 @@ import org.hibernate.type.Type;
  * @author josh
  */
 public class FromElement extends HqlSqlWalkerNode implements DisplayableNode, ParameterContainer {
-
-    private static final CoreMessageLogger LOG = Logger.getMessageLogger(CoreMessageLogger.class, FromElement.class.getName());
+	private static final CoreMessageLogger LOG = CoreLogging.messageLogger( FromElement.class );
 
 	private String className;
 	private String classAlias;
@@ -71,22 +55,21 @@ public class FromElement extends HqlSqlWalkerNode implements DisplayableNode, Pa
 	private String collectionTableAlias;
 	private FromClause fromClause;
 	private boolean includeSubclasses = true;
-	private boolean collectionJoin = false;
+	private boolean collectionJoin;
 	private FromElement origin;
 	private String[] columns;
 	private String role;
 	private boolean fetch;
 	private boolean isAllPropertyFetch;
-	private boolean filter = false;
+	private boolean filter;
 	private int sequence = -1;
-	private boolean useFromFragment = false;
-	private boolean initialized = false;
+	private boolean useFromFragment;
+	private boolean initialized;
 	private FromElementType elementType;
 	private boolean useWhereFragment = true;
-	private List destinations = new LinkedList();
-	private boolean manyToMany = false;
-	private String withClauseFragment = null;
-	private String withClauseJoinAlias;
+	private List<FromElement> destinations;
+	private boolean manyToMany;
+	private String withClauseFragment;
 	private boolean dereferencedBySuperclassProperty;
 	private boolean dereferencedBySubclassProperty;
 
@@ -109,11 +92,13 @@ public class FromElement extends HqlSqlWalkerNode implements DisplayableNode, Pa
 		this.classAlias = alias;
 		this.tableAlias = origin.getTableAlias();
 		super.initialize( fromClause.getWalker() );
+
 	}
 
 	protected void initializeComponentJoin(FromElementType elementType) {
-		this.elementType = elementType;
 		fromClause.registerFromElement( this );
+		elementType.applyTreatAsDeclarations( getWalker().getTreatAsDeclarationsByPath( classAlias ) );
+		this.elementType = elementType;
 		initialized = true;
 	}
 
@@ -131,19 +116,24 @@ public class FromElement extends HqlSqlWalkerNode implements DisplayableNode, Pa
 	}
 
 	public void initializeEntity(
-	        FromClause fromClause,
-	        String className,
-	        EntityPersister persister,
-	        EntityType type,
-	        String classAlias,
-	        String tableAlias) {
+			FromClause fromClause,
+			String className,
+			EntityPersister persister,
+			EntityType type,
+			String classAlias,
+			String tableAlias) {
 		doInitialize( fromClause, tableAlias, className, classAlias, persister, type );
 		this.sequence = fromClause.nextFromElementCounter();
 		initialized = true;
 	}
 
-	private void doInitialize(FromClause fromClause, String tableAlias, String className, String classAlias,
-							  EntityPersister persister, EntityType type) {
+	protected void doInitialize(
+			FromClause fromClause,
+			String tableAlias,
+			String className,
+			String classAlias,
+			EntityPersister persister,
+			EntityType type) {
 		if ( initialized ) {
 			throw new IllegalStateException( "Already initialized!!" );
 		}
@@ -162,7 +152,7 @@ public class FromElement extends HqlSqlWalkerNode implements DisplayableNode, Pa
 	}
 
 	@Override
-    public Type getDataType() {
+	public Type getDataType() {
 		return elementType.getDataType();
 	}
 
@@ -230,6 +220,14 @@ public class FromElement extends HqlSqlWalkerNode implements DisplayableNode, Pa
 		return elementType.renderPropertySelect( size, k, isAllPropertyFetch );
 	}
 
+	public String renderMapKeyPropertySelectFragment(int size, int k) {
+		return elementType.renderMapKeyPropertySelectFragment( size, k );
+	}
+
+	public String renderMapEntryPropertySelectFragment(int size, int k) {
+		return elementType.renderMapEntryPropertySelectFragment( size, k );
+	}
+
 	String renderCollectionSelectFragment(int size, int k) {
 		return elementType.renderCollectionSelectFragment( size, k );
 	}
@@ -292,12 +290,12 @@ public class FromElement extends HqlSqlWalkerNode implements DisplayableNode, Pa
 	}
 
 	@Override
-    public int hashCode() {
+	public int hashCode() {
 		return super.hashCode();
 	}
 
 	@Override
-    public boolean equals(Object obj) {
+	public boolean equals(Object obj) {
 		return super.equals( obj );
 	}
 
@@ -311,8 +309,9 @@ public class FromElement extends HqlSqlWalkerNode implements DisplayableNode, Pa
 	}
 
 	public void setIncludeSubclasses(boolean includeSubclasses) {
-		if ( LOG.isTraceEnabled() && isDereferencedBySuperclassOrSubclassProperty() && !includeSubclasses )
+		if ( !includeSubclasses && isDereferencedBySuperclassOrSubclassProperty() && LOG.isTraceEnabled() ) {
 			LOG.trace( "Attempt to disable subclass-inclusions : ", new Exception( "Stack-trace source" ) );
+		}
 		this.includeSubclasses = includeSubclasses;
 	}
 
@@ -341,14 +340,7 @@ public class FromElement extends HqlSqlWalkerNode implements DisplayableNode, Pa
 			throw new IllegalStateException( "No table alias for node " + this );
 		}
 
-		final String propertyName;
-		if ( getEntityPersister() != null && getEntityPersister().getEntityMetamodel() != null
-				&& getEntityPersister().getEntityMetamodel().hasNonIdentifierPropertyNamedId() ) {
-			propertyName = getEntityPersister().getIdentifierPropertyName();
-		}
-		else {
-			propertyName = EntityPersister.ENTITY_ID;
-		}
+		final String propertyName = getIdentifierPropertyName();
 
 		if ( getWalker().getStatementType() == HqlSqlTokenTypes.SELECT ) {
 			return getPropertyMapping( propertyName ).toColumns( table, propertyName );
@@ -368,6 +360,15 @@ public class FromElement extends HqlSqlWalkerNode implements DisplayableNode, Pa
 
 	public void setRole(String role) {
 		this.role = role;
+		applyTreatAsDeclarations( getWalker().getTreatAsDeclarationsByPath( role ) );
+	}
+
+	public void applyTreatAsDeclarations(Set<String> treatAsDeclarationsByPath) {
+		elementType.applyTreatAsDeclarations( treatAsDeclarationsByPath );
+	}
+
+	public String getRole() {
+		return role;
 	}
 
 	public void setQueryableCollection(QueryableCollection queryableCollection) {
@@ -393,7 +394,7 @@ public class FromElement extends HqlSqlWalkerNode implements DisplayableNode, Pa
 				ASTUtil.appendSibling( origin, this );
 			}
 			else {
-				if ( !getWalker().isInFrom() && !getWalker().isInSelect() ) {
+				if ( !getWalker().isInFrom() && !getWalker().isInSelect() && !getWalker().isInEntityGraph() ) {
 					getFromClause().addChild( this );
 				}
 				else {
@@ -417,11 +418,19 @@ public class FromElement extends HqlSqlWalkerNode implements DisplayableNode, Pa
 	}
 
 	private void addDestination(FromElement fromElement) {
+		if ( destinations == null ) {
+			destinations = new LinkedList<FromElement>();
+		}
 		destinations.add( fromElement );
 	}
 
-	public List getDestinations() {
-		return destinations;
+	public List<FromElement> getDestinations() {
+		if ( destinations == null ) {
+			return Collections.emptyList();
+		}
+		else {
+			return destinations;
+		}
 	}
 
 	public FromElement getOrigin() {
@@ -434,6 +443,19 @@ public class FromElement extends HqlSqlWalkerNode implements DisplayableNode, Pa
 		}
 		if ( origin.getText() == null || "".equals( origin.getText() ) ) {
 			return origin.getRealOrigin();
+		}
+		return origin;
+	}
+
+	public FromElement getFetchOrigin() {
+		if ( origin == null ) {
+			return null;
+		}
+		if ( !origin.isFetch() ) {
+			return origin;
+		}
+		if ( origin.getText() == null || "".equals( origin.getText() ) ) {
+			return origin.getFetchOrigin();
 		}
 		return origin;
 	}
@@ -452,16 +474,12 @@ public class FromElement extends HqlSqlWalkerNode implements DisplayableNode, Pa
 			this.alias = alias;
 		}
 
-		/**
-		 * {@inheritDoc}
-		 */
+		@Override
 		public String getSqlFragment() {
 			return persisterDiscriminatorMetadata.getSqlFragment( alias );
 		}
 
-		/**
-		 * {@inheritDoc}
-		 */
+		@Override
 		public Type getResolutionType() {
 			return persisterDiscriminatorMetadata.getResolutionType();
 		}
@@ -504,6 +522,14 @@ public class FromElement extends HqlSqlWalkerNode implements DisplayableNode, Pa
 
 	public PropertyMapping getPropertyMapping(String propertyName) {
 		return elementType.getPropertyMapping( propertyName );
+	}
+
+	public CollectionPropertyReference getCollectionPropertyReference(String propertyName) {
+		return elementType.getCollectionPropertyReference( propertyName );
+	}
+
+	public String getIdentifierPropertyName() {
+		return elementType.getIdentifierPropertyName();
 	}
 
 	public void setFetch(boolean fetch) {
@@ -582,7 +608,9 @@ public class FromElement extends HqlSqlWalkerNode implements DisplayableNode, Pa
 	}
 
 	public boolean isFromOrJoinFragment() {
-		return getType() == SqlTokenTypes.FROM_FRAGMENT || getType() == SqlTokenTypes.JOIN_FRAGMENT;
+		return getType() == SqlTokenTypes.FROM_FRAGMENT
+				|| getType() == SqlTokenTypes.JOIN_FRAGMENT
+				|| getType() == SqlTokenTypes.ENTITY_JOIN;
 	}
 
 	public boolean isAllPropertyFetch() {
@@ -597,22 +625,8 @@ public class FromElement extends HqlSqlWalkerNode implements DisplayableNode, Pa
 		return withClauseFragment;
 	}
 
-	public String getWithClauseJoinAlias() {
-		return withClauseJoinAlias;
-	}
-
-	public void setWithClauseFragment(String withClauseJoinAlias, String withClauseFragment) {
-		this.withClauseJoinAlias = withClauseJoinAlias;
+	public void setWithClauseFragment(String withClauseFragment) {
 		this.withClauseFragment = withClauseFragment;
-	}
-
-	public boolean hasCacheablePersister() {
-		if ( getQueryableCollection() != null ) {
-			return getQueryableCollection().hasCache();
-		}
-		else {
-			return getQueryable().hasCache();
-		}
 	}
 
 	public void handlePropertyBeingDereferenced(Type propertySource, String propertyName) {
@@ -660,21 +674,35 @@ public class FromElement extends HqlSqlWalkerNode implements DisplayableNode, Pa
 
 
 	// ParameterContainer impl ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-	private List embeddedParameters;
+	private List<ParameterSpecification> embeddedParameters = new ArrayList<>(  );
 
+	@Override
 	public void addEmbeddedParameter(ParameterSpecification specification) {
-		if ( embeddedParameters == null ) {
-			embeddedParameters = new ArrayList();
-		}
 		embeddedParameters.add( specification );
 	}
 
+	@Override
 	public boolean hasEmbeddedParameters() {
-		return embeddedParameters != null && ! embeddedParameters.isEmpty();
+		return !embeddedParameters.isEmpty();
 	}
 
+	@Override
 	public ParameterSpecification[] getEmbeddedParameters() {
-		return ( ParameterSpecification[] ) embeddedParameters.toArray( new ParameterSpecification[ embeddedParameters.size() ] );
+		final List<ParameterSpecification> parameterSpecification = getParameterSpecification();
+		return parameterSpecification.toArray( new ParameterSpecification[ parameterSpecification.size() ] );
+	}
+
+	private List<ParameterSpecification> getParameterSpecification() {
+		List<ParameterSpecification> parameterSpecifications =
+			embeddedParameters.stream()
+					.filter( o -> o instanceof  DynamicFilterParameterSpecification )
+					.collect( Collectors.toList() );
+
+		parameterSpecifications.addAll(
+			embeddedParameters.stream()
+					.filter( o -> ! (o instanceof  DynamicFilterParameterSpecification ) )
+					.collect( Collectors.toList() ) );
+		return parameterSpecifications;
 	}
 
 	public ParameterSpecification getIndexCollectionSelectorParamSpec() {

@@ -1,25 +1,8 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2008-2011, Red Hat Inc. or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Inc.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.action.internal;
 
@@ -28,30 +11,47 @@ import java.io.Serializable;
 import org.hibernate.AssertionFailure;
 import org.hibernate.HibernateException;
 import org.hibernate.engine.spi.EntityKey;
-import org.hibernate.engine.spi.SessionImplementor;
+import org.hibernate.engine.spi.SharedSessionContractImplementor;
 import org.hibernate.event.service.spi.EventListenerGroup;
 import org.hibernate.event.spi.EventType;
+import org.hibernate.event.spi.PostCommitInsertEventListener;
 import org.hibernate.event.spi.PostInsertEvent;
 import org.hibernate.event.spi.PostInsertEventListener;
 import org.hibernate.event.spi.PreInsertEvent;
 import org.hibernate.event.spi.PreInsertEventListener;
 import org.hibernate.persister.entity.EntityPersister;
 
+/**
+ * The action for performing entity insertions when entity is using IDENTITY column identifier generation
+ *
+ * @see EntityInsertAction
+ */
 public final class EntityIdentityInsertAction extends AbstractEntityInsertAction  {
 
 	private final boolean isDelayed;
 	private final EntityKey delayedEntityKey;
 	private EntityKey entityKey;
-	//private CacheEntry cacheEntry;
 	private Serializable generatedId;
 
+	/**
+	 * Constructs an EntityIdentityInsertAction
+	 *
+	 * @param state The current (extracted) entity state
+	 * @param instance The entity instance
+	 * @param persister The entity persister
+	 * @param isVersionIncrementDisabled Whether version incrementing is disabled
+	 * @param session The session
+	 * @param isDelayed Are we in a situation which allows the insertion to be delayed?
+	 *
+	 * @throws HibernateException Indicates an illegal state
+	 */
 	public EntityIdentityInsertAction(
 			Object[] state,
 			Object instance,
 			EntityPersister persister,
 			boolean isVersionIncrementDisabled,
-			SessionImplementor session,
-			boolean isDelayed) throws HibernateException {
+			SharedSessionContractImplementor session,
+			boolean isDelayed) {
 		super(
 				( isDelayed ? generateDelayedPostInsertIdentifier() : null ),
 				state,
@@ -69,15 +69,15 @@ public final class EntityIdentityInsertAction extends AbstractEntityInsertAction
 		nullifyTransientReferencesIfNotAlready();
 
 		final EntityPersister persister = getPersister();
-		final SessionImplementor session = getSession();
+		final SharedSessionContractImplementor session = getSession();
 		final Object instance = getInstance();
 
-		boolean veto = preInsert();
+		setVeto( preInsert() );
 
 		// Don't need to lock the cache here, since if someone
 		// else inserted the same pk first, the insert would fail
 
-		if ( !veto ) {
+		if ( !isVeto() ) {
 			generatedId = persister.insert( getState(), instance, session );
 			if ( persister.hasInsertGeneratedProperties() ) {
 				persister.processInsertGeneratedProperties( generatedId, instance, getState(), session );
@@ -101,7 +101,7 @@ public final class EntityIdentityInsertAction extends AbstractEntityInsertAction
 
 		postInsert();
 
-		if ( session.getFactory().getStatistics().isStatisticsEnabled() && !veto ) {
+		if ( session.getFactory().getStatistics().isStatisticsEnabled() && !isVeto() ) {
 			session.getFactory().getStatisticsImplementor().insertEntity( getPersister().getEntityName() );
 		}
 
@@ -109,24 +109,31 @@ public final class EntityIdentityInsertAction extends AbstractEntityInsertAction
 	}
 
 	@Override
-    public boolean needsAfterTransactionCompletion() {
+	public boolean needsAfterTransactionCompletion() {
 		//TODO: simply remove this override if we fix the above todos
 		return hasPostCommitEventListeners();
 	}
 
 	@Override
-    protected boolean hasPostCommitEventListeners() {
-		return ! listenerGroup( EventType.POST_COMMIT_INSERT ).isEmpty();
+	protected boolean hasPostCommitEventListeners() {
+		final EventListenerGroup<PostInsertEventListener> group = listenerGroup( EventType.POST_COMMIT_INSERT );
+		for ( PostInsertEventListener listener : group.listeners() ) {
+			if ( listener.requiresPostCommitHandling( getPersister() ) ) {
+				return true;
+			}
+		}
+
+		return false;
 	}
 
 	@Override
-	public void doAfterTransactionCompletion(boolean success, SessionImplementor session) {
+	public void doAfterTransactionCompletion(boolean success, SharedSessionContractImplementor session) {
 		//TODO: reenable if we also fix the above todo
 		/*EntityPersister persister = getEntityPersister();
 		if ( success && persister.hasCache() && !persister.isCacheInvalidationRequired() ) {
 			persister.getCache().afterInsert( getGeneratedId(), cacheEntry );
 		}*/
-		postCommitInsert();
+		postCommitInsert( success );
 	}
 
 	private void postInsert() {
@@ -134,7 +141,7 @@ public final class EntityIdentityInsertAction extends AbstractEntityInsertAction
 			getSession().getPersistenceContext().replaceDelayedEntityIdentityInsertKeys( delayedEntityKey, generatedId );
 		}
 
-		EventListenerGroup<PostInsertEventListener> listenerGroup = listenerGroup( EventType.POST_INSERT );
+		final EventListenerGroup<PostInsertEventListener> listenerGroup = listenerGroup( EventType.POST_INSERT );
 		if ( listenerGroup.isEmpty() ) {
 			return;
 		}
@@ -150,8 +157,8 @@ public final class EntityIdentityInsertAction extends AbstractEntityInsertAction
 		}
 	}
 
-	private void postCommitInsert() {
-		EventListenerGroup<PostInsertEventListener> listenerGroup = listenerGroup( EventType.POST_COMMIT_INSERT );
+	private void postCommitInsert(boolean success) {
+		final EventListenerGroup<PostInsertEventListener> listenerGroup = listenerGroup( EventType.POST_COMMIT_INSERT );
 		if ( listenerGroup.isEmpty() ) {
 			return;
 		}
@@ -163,14 +170,26 @@ public final class EntityIdentityInsertAction extends AbstractEntityInsertAction
 				eventSource()
 		);
 		for ( PostInsertEventListener listener : listenerGroup.listeners() ) {
-			listener.onPostInsert( event );
+			if ( PostCommitInsertEventListener.class.isInstance( listener ) ) {
+				if ( success ) {
+					listener.onPostInsert( event );
+				}
+				else {
+					((PostCommitInsertEventListener) listener).onPostInsertCommitFailed( event );
+				}
+			}
+			else {
+				//default to the legacy implementation that always fires the event
+				listener.onPostInsert( event );
+			}
 		}
 	}
 
 	private boolean preInsert() {
-		EventListenerGroup<PreInsertEventListener> listenerGroup = listenerGroup( EventType.PRE_INSERT );
+		final EventListenerGroup<PreInsertEventListener> listenerGroup = listenerGroup( EventType.PRE_INSERT );
 		if ( listenerGroup.isEmpty() ) {
-			return false; // NO_VETO
+			// NO_VETO
+			return false;
 		}
 		boolean veto = false;
 		final PreInsertEvent event = new PreInsertEvent( getInstance(), null, getState(), getPersister(), eventSource() );
@@ -180,11 +199,24 @@ public final class EntityIdentityInsertAction extends AbstractEntityInsertAction
 		return veto;
 	}
 
+	/**
+	 * Access to the generated identifier
+	 *
+	 * @return The generated identifier
+	 */
 	public final Serializable getGeneratedId() {
 		return generatedId;
 	}
 
-	// TODO: nothing seems to use this method; can it be renmoved?
+	/**
+	 * Access to the delayed entity key
+	 *
+	 * @return The delayed entity key
+	 *
+	 * @deprecated No Hibernate code currently uses this method
+	 */
+	@Deprecated
+	@SuppressWarnings("UnusedDeclaration")
 	public EntityKey getDelayedEntityKey() {
 		return delayedEntityKey;
 	}
@@ -199,7 +231,7 @@ public final class EntityIdentityInsertAction extends AbstractEntityInsertAction
 		return entityKey != null ? entityKey : delayedEntityKey;
 	}
 
-	private synchronized static DelayedPostInsertIdentifier generateDelayedPostInsertIdentifier() {
+	private static DelayedPostInsertIdentifier generateDelayedPostInsertIdentifier() {
 		return new DelayedPostInsertIdentifier();
 	}
 

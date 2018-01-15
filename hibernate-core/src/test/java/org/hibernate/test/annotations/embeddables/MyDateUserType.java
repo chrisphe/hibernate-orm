@@ -1,6 +1,7 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
+<<<<<<< HEAD
  * Copyright (c) 2012, Red Hat Inc. or third-party contributors as
  * indicated by the @author tags or express copyright attribution
  * statements applied by the authors.  All third-party contributions are
@@ -20,6 +21,10 @@
  * Free Software Foundation, Inc.
  * 51 Franklin Street, Fifth Floor
  * Boston, MA  02110-1301  USA
+=======
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
+>>>>>>> upstream/master
  */
 package org.hibernate.test.annotations.embeddables;
 
@@ -30,7 +35,11 @@ import java.sql.SQLException;
 import java.sql.Types;
 
 import org.hibernate.HibernateException;
+<<<<<<< HEAD
 import org.hibernate.engine.spi.SessionImplementor;
+=======
+import org.hibernate.engine.spi.SharedSessionContractImplementor;
+>>>>>>> upstream/master
 import org.hibernate.usertype.UserType;
 
 /**
@@ -65,6 +74,7 @@ public class MyDateUserType implements UserType {
 	}
 
 	@Override
+<<<<<<< HEAD
 	public MyDate nullSafeGet(ResultSet rs, String[] names,
 			SessionImplementor session, Object owner)
 			throws HibernateException, SQLException {
@@ -77,6 +87,22 @@ public class MyDateUserType implements UserType {
 	public void nullSafeSet(PreparedStatement st, Object value, int index,
 			SessionImplementor session) throws HibernateException, SQLException {
 		
+=======
+	public MyDate nullSafeGet(
+			ResultSet rs,
+			String[] names,
+			SharedSessionContractImplementor session,
+			Object owner) throws HibernateException, SQLException {
+		return new MyDate(rs.getDate(rs.findColumn(names[0])));
+	}
+
+	@Override
+	public void nullSafeSet(
+			PreparedStatement st,
+			Object value,
+			int index,
+			SharedSessionContractImplementor session) throws HibernateException, SQLException {
+>>>>>>> upstream/master
 		st.setDate(index, new java.sql.Date(((MyDate)value).getDate().getTime()));
 	}
 

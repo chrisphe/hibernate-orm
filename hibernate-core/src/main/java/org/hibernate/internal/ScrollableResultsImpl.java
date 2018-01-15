@@ -1,257 +1,209 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2008-2011, Red Hat Inc. or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Inc.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.internal;
+
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 
 import org.hibernate.HibernateException;
-import org.hibernate.MappingException;
+import org.hibernate.JDBCException;
 import org.hibernate.ScrollableResults;
 import org.hibernate.engine.spi.QueryParameters;
-import org.hibernate.engine.spi.SessionImplementor;
+import org.hibernate.engine.spi.SharedSessionContractImplementor;
 import org.hibernate.hql.internal.HolderInstantiator;
 import org.hibernate.loader.Loader;
 import org.hibernate.type.Type;
 
 /**
- * Implementation of the <tt>ScrollableResults</tt> interface
+ * Standard ScrollableResults implementation.
+ *
  * @author Gavin King
  */
 public class ScrollableResultsImpl extends AbstractScrollableResults implements ScrollableResults {
-
 	private Object[] currentRow;
 
+	/**
+	 * Constructs a ScrollableResultsImpl using the specified information.
+	 *
+	 * @param rs The scrollable result set
+	 * @param ps The prepared statement used to obtain the result set
+	 * @param sess The originating session
+	 * @param loader The loader
+	 * @param queryParameters query parameters
+	 * @param types The result types
+	 * @param holderInstantiator Ugh
+	 */
 	public ScrollableResultsImpl(
-	        ResultSet rs,
-	        PreparedStatement ps,
-	        SessionImplementor sess,
-	        Loader loader,
-	        QueryParameters queryParameters,
-	        Type[] types, HolderInstantiator holderInstantiator) throws MappingException {
+			ResultSet rs,
+			PreparedStatement ps,
+			SharedSessionContractImplementor sess,
+			Loader loader,
+			QueryParameters queryParameters,
+			Type[] types, HolderInstantiator holderInstantiator) {
 		super( rs, ps, sess, loader, queryParameters, types, holderInstantiator );
 	}
 
+	@Override
 	protected Object[] getCurrentRow() {
 		return currentRow;
 	}
 
-	/**
-	 * @see org.hibernate.ScrollableResults#scroll(int)
-	 */
-	public boolean scroll(int i) throws HibernateException {
+	@Override
+	public boolean scroll(int i) {
 		try {
-			boolean result = getResultSet().relative(i);
-			prepareCurrentRow(result);
+			final boolean result = getResultSet().relative( i );
+			prepareCurrentRow( result );
 			return result;
 		}
 		catch (SQLException sqle) {
-			throw getSession().getFactory().getSQLExceptionHelper().convert(
-					sqle,
-					"could not advance using scroll()"
-				);
+			throw convert( sqle, "could not advance using scroll()" );
 		}
 	}
 
-	/**
-	 * @see org.hibernate.ScrollableResults#first()
-	 */
-	public boolean first() throws HibernateException {
+	protected JDBCException convert(SQLException sqle, String message) {
+		return getSession().getFactory().getSQLExceptionHelper().convert( sqle, message );
+	}
+
+	@Override
+	public boolean first() {
 		try {
-			boolean result = getResultSet().first();
-			prepareCurrentRow(result);
+			final boolean result = getResultSet().first();
+			prepareCurrentRow( result );
 			return result;
 		}
 		catch (SQLException sqle) {
-			throw getSession().getFactory().getSQLExceptionHelper().convert(
-					sqle,
-					"could not advance using first()"
-				);
+			throw convert( sqle, "could not advance using first()" );
 		}
 	}
 
-	/**
-	 * @see org.hibernate.ScrollableResults#last()
-	 */
-	public boolean last() throws HibernateException {
+	@Override
+	public boolean last() {
 		try {
-			boolean result = getResultSet().last();
-			prepareCurrentRow(result);
+			final boolean result = getResultSet().last();
+			prepareCurrentRow( result );
 			return result;
 		}
 		catch (SQLException sqle) {
-			throw getSession().getFactory().getSQLExceptionHelper().convert(
-					sqle,
-					"could not advance using last()"
-				);
+			throw convert( sqle, "could not advance using last()" );
 		}
 	}
 
-	/**
-	 * @see org.hibernate.ScrollableResults#next()
-	 */
-	public boolean next() throws HibernateException {
+	@Override
+	public boolean next() {
 		try {
-			boolean result = getResultSet().next();
-			prepareCurrentRow(result);
+			final boolean result = getResultSet().next();
+			prepareCurrentRow( result );
 			return result;
 		}
 		catch (SQLException sqle) {
-			throw getSession().getFactory().getSQLExceptionHelper().convert(
-					sqle,
-					"could not advance using next()"
-				);
+			throw convert( sqle, "could not advance using next()" );
 		}
 	}
 
-	/**
-	 * @see org.hibernate.ScrollableResults#previous()
-	 */
-	public boolean previous() throws HibernateException {
+	@Override
+	public boolean previous() {
 		try {
-			boolean result = getResultSet().previous();
-			prepareCurrentRow(result);
+			final boolean result = getResultSet().previous();
+			prepareCurrentRow( result );
 			return result;
 		}
 		catch (SQLException sqle) {
-			throw getSession().getFactory().getSQLExceptionHelper().convert(
-					sqle,
-					"could not advance using previous()"
-				);
+			throw convert( sqle, "could not advance using previous()" );
 		}
 	}
 
-	/**
-	 * @see org.hibernate.ScrollableResults#afterLast()
-	 */
-	public void afterLast() throws HibernateException {
+	@Override
+	public void afterLast() {
 		try {
 			getResultSet().afterLast();
 		}
 		catch (SQLException sqle) {
-			throw getSession().getFactory().getSQLExceptionHelper().convert(
-					sqle,
-					"exception calling afterLast()"
-				);
+			throw convert( sqle, "exception calling afterLast()" );
 		}
 	}
 
-	/**
-	 * @see org.hibernate.ScrollableResults#beforeFirst()
-	 */
-	public void beforeFirst() throws HibernateException {
+	@Override
+	public void beforeFirst() {
 		try {
 			getResultSet().beforeFirst();
 		}
 		catch (SQLException sqle) {
-			throw getSession().getFactory().getSQLExceptionHelper().convert(
-					sqle,
-					"exception calling beforeFirst()"
-				);
+			throw convert( sqle, "exception calling beforeFirst()" );
 		}
 	}
 
-	/**
-	 * @see org.hibernate.ScrollableResults#isFirst()
-	 */
-	public boolean isFirst() throws HibernateException {
+	@Override
+	public boolean isFirst() {
 		try {
 			return getResultSet().isFirst();
 		}
 		catch (SQLException sqle) {
-			throw getSession().getFactory().getSQLExceptionHelper().convert(
-					sqle,
-					"exception calling isFirst()"
-				);
+			throw convert( sqle, "exception calling isFirst()" );
 		}
 	}
 
-	/**
-	 * @see org.hibernate.ScrollableResults#isLast()
-	 */
-	public boolean isLast() throws HibernateException {
+	@Override
+	public boolean isLast() {
 		try {
 			return getResultSet().isLast();
 		}
 		catch (SQLException sqle) {
-			throw getSession().getFactory().getSQLExceptionHelper().convert(
-					sqle,
-					"exception calling isLast()"
-				);
+			throw convert( sqle, "exception calling isLast()" );
 		}
 	}
 
+	@Override
 	public int getRowNumber() throws HibernateException {
 		try {
-			return getResultSet().getRow()-1;
+			return getResultSet().getRow() - 1;
 		}
 		catch (SQLException sqle) {
-			throw getSession().getFactory().getSQLExceptionHelper().convert(
-					sqle,
-					"exception calling getRow()"
-				);
+			throw convert( sqle, "exception calling getRow()" );
 		}
 	}
 
+	@Override
 	public boolean setRowNumber(int rowNumber) throws HibernateException {
-		if (rowNumber>=0) rowNumber++;
+		if ( rowNumber >= 0 ) {
+			rowNumber++;
+		}
+
 		try {
-			boolean result = getResultSet().absolute(rowNumber);
-			prepareCurrentRow(result);
+			final boolean result = getResultSet().absolute( rowNumber );
+			prepareCurrentRow( result );
 			return result;
 		}
 		catch (SQLException sqle) {
-			throw getSession().getFactory().getSQLExceptionHelper().convert(
-					sqle,
-					"could not advance using absolute()"
-				);
+			throw convert( sqle, "could not advance using absolute()" );
 		}
 	}
 
-	private void prepareCurrentRow(boolean underlyingScrollSuccessful) 
-	throws HibernateException {
-		
-		if (!underlyingScrollSuccessful) {
+	private void prepareCurrentRow(boolean underlyingScrollSuccessful) {
+		if ( !underlyingScrollSuccessful ) {
 			currentRow = null;
 			return;
 		}
 
-		Object result = getLoader().loadSingleRow(
+		final Object result = getLoader().loadSingleRow(
 				getResultSet(),
 				getSession(),
 				getQueryParameters(),
-				false
+				true
 		);
 		if ( result != null && result.getClass().isArray() ) {
 			currentRow = (Object[]) result;
 		}
 		else {
-			currentRow = new Object[] { result };
+			currentRow = new Object[] {result};
 		}
 
 		if ( getHolderInstantiator() != null ) {
-			currentRow = new Object[] { getHolderInstantiator().instantiate(currentRow) };
+			currentRow = new Object[] {getHolderInstantiator().instantiate( currentRow )};
 		}
 
 		afterScrollOperation();

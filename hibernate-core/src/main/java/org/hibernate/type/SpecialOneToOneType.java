@@ -1,25 +1,8 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2010, Red Hat Inc. or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Inc.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.type;
 
@@ -32,8 +15,8 @@ import org.hibernate.HibernateException;
 import org.hibernate.MappingException;
 import org.hibernate.engine.internal.ForeignKeys;
 import org.hibernate.engine.spi.Mapping;
-import org.hibernate.engine.spi.SessionImplementor;
-import org.hibernate.metamodel.relational.Size;
+import org.hibernate.engine.jdbc.Size;
+import org.hibernate.engine.spi.SharedSessionContractImplementor;
 
 /**
  * A one-to-one association that maps to specific formula(s)
@@ -43,6 +26,10 @@ import org.hibernate.metamodel.relational.Size;
  */
 public class SpecialOneToOneType extends OneToOneType {
 	
+	/**
+	 * @deprecated Use {@link #SpecialOneToOneType(org.hibernate.type.TypeFactory.TypeScope, String, ForeignKeyDirection, boolean, String, boolean, boolean, String, String)} instead.
+	 */
+	@Deprecated
 	public SpecialOneToOneType(
 			TypeFactory.TypeScope scope,
 			String referencedEntityName,
@@ -52,14 +39,27 @@ public class SpecialOneToOneType extends OneToOneType {
 			boolean unwrapProxy,
 			String entityName,
 			String propertyName) {
+		this( scope, referencedEntityName, foreignKeyType, uniqueKeyPropertyName == null, uniqueKeyPropertyName, lazy, unwrapProxy, entityName, propertyName );
+	}
+	
+	public SpecialOneToOneType(
+			TypeFactory.TypeScope scope,
+			String referencedEntityName,
+			ForeignKeyDirection foreignKeyType,
+			boolean referenceToPrimaryKey, 
+			String uniqueKeyPropertyName,
+			boolean lazy,
+			boolean unwrapProxy,
+			String entityName,
+			String propertyName) {
 		super(
 				scope,
 				referencedEntityName, 
-				foreignKeyType, 
+				foreignKeyType,
+				referenceToPrimaryKey, 
 				uniqueKeyPropertyName, 
 				lazy,
 				unwrapProxy,
-				true, 
 				entityName, 
 				propertyName
 			);
@@ -86,22 +86,19 @@ public class SpecialOneToOneType extends OneToOneType {
 	public boolean useLHSPrimaryKey() {
 		return false;
 	}
-	
-	public Object hydrate(ResultSet rs, String[] names, SessionImplementor session, Object owner)
+
+	@Override
+	public Object hydrate(ResultSet rs, String[] names, SharedSessionContractImplementor session, Object owner)
 	throws HibernateException, SQLException {
 		return super.getIdentifierOrUniqueKeyType( session.getFactory() )
 			.nullSafeGet(rs, names, session, owner);
 	}
 	
 	// TODO: copy/paste from ManyToOneType
-
-	public Serializable disassemble(Object value, SessionImplementor session, Object owner)
+	@Override
+	public Serializable disassemble(Object value, SharedSessionContractImplementor session, Object owner)
 	throws HibernateException {
 
-		if ( isNotEmbedded(session) ) {
-			return getIdentifierType(session).disassemble(value, session, owner);
-		}
-		
 		if (value==null) {
 			return null;
 		}
@@ -119,14 +116,13 @@ public class SpecialOneToOneType extends OneToOneType {
 		}
 	}
 
-	public Object assemble(Serializable oid, SessionImplementor session, Object owner)
+	@Override
+	public Object assemble(Serializable oid, SharedSessionContractImplementor session, Object owner)
 	throws HibernateException {
 		//TODO: currently broken for unique-key references (does not detect
 		//      change to unique key property of the associated object)
 		Serializable id = (Serializable) getIdentifierType(session).assemble(oid, session, null); //the owner of the association is not the owner of the id
 
-		if ( isNotEmbedded(session) ) return id;
-		
 		if (id==null) {
 			return null;
 		}

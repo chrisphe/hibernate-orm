@@ -1,34 +1,17 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2008-2011, Red Hat Inc. or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Inc.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.engine.internal;
 
-import org.jboss.logging.Logger;
-
-import org.hibernate.engine.spi.SessionImplementor;
+import org.hibernate.engine.spi.SharedSessionContractImplementor;
 import org.hibernate.internal.CoreMessageLogger;
 import org.hibernate.persister.entity.EntityPersister;
 import org.hibernate.type.VersionType;
+
+import org.jboss.logging.Logger;
 
 /**
  * Utilities for dealing with optimistic locking values.
@@ -36,38 +19,16 @@ import org.hibernate.type.VersionType;
  * @author Gavin King
  */
 public final class Versioning {
-
-	// todo : replace these constants with references to org.hibernate.annotations.OptimisticLockType enum
-
-	/**
-	 * Apply no optimistic locking
-	 */
-	public static final int OPTIMISTIC_LOCK_NONE = -1;
-
-	/**
-	 * Apply optimistic locking based on the defined version or timestamp
-	 * property.
-	 */
-	public static final int OPTIMISTIC_LOCK_VERSION = 0;
-
-	/**
-	 * Apply optimistic locking based on the a current vs. snapshot comparison
-	 * of <b>all</b> properties.
-	 */
-	public static final int OPTIMISTIC_LOCK_ALL = 2;
-
-	/**
-	 * Apply optimistic locking based on the a current vs. snapshot comparison
-	 * of <b>dirty</b> properties.
-	 */
-	public static final int OPTIMISTIC_LOCK_DIRTY = 1;
-
-	private static final CoreMessageLogger LOG = Logger.getMessageLogger( CoreMessageLogger.class, Versioning.class.getName() );
+	private static final CoreMessageLogger LOG = Logger.getMessageLogger(
+			CoreMessageLogger.class,
+			Versioning.class.getName()
+	);
 
 	/**
 	 * Private constructor disallowing instantiation.
 	 */
-	private Versioning() {}
+	private Versioning() {
+	}
 
 	/**
 	 * Create an initial optimistic locking value according the {@link VersionType}
@@ -77,9 +38,9 @@ public final class Versioning {
 	 * @param session The originating session
 	 * @return The initial optimistic locking value
 	 */
-	private static Object seed(VersionType versionType, SessionImplementor session) {
-		Object seed = versionType.seed( session );
-		LOG.tracev( "Seeding: {0}", seed );
+	private static Object seed(VersionType versionType, SharedSessionContractImplementor session) {
+		final Object seed = versionType.seed( session );
+		LOG.tracef( "Seeding: %s", seed );
 		return seed;
 	}
 
@@ -96,11 +57,11 @@ public final class Versioning {
 	 * otherwise.
 	 */
 	public static boolean seedVersion(
-	        Object[] fields,
-	        int versionProperty,
-	        VersionType versionType,
-	        SessionImplementor session) {
-		Object initialVersion = fields[versionProperty];
+			Object[] fields,
+			int versionProperty,
+			VersionType versionType,
+			SharedSessionContractImplementor session) {
+		final Object initialVersion = fields[versionProperty];
 		if (
 			initialVersion==null ||
 			// This next bit is to allow for both unsaved-value="negative"
@@ -126,11 +87,15 @@ public final class Versioning {
 	 * @param session The originating session
 	 * @return The incremented optimistic locking value.
 	 */
-	public static Object increment(Object version, VersionType versionType, SessionImplementor session) {
-		Object next = versionType.next( version, session );
+	@SuppressWarnings("unchecked")
+	public static Object increment(Object version, VersionType versionType, SharedSessionContractImplementor session) {
+		final Object next = versionType.next( version, session );
 		if ( LOG.isTraceEnabled() ) {
-			LOG.tracev( "Incrementing: {0} to {1}", versionType.toLoggableString( version, session.getFactory() ),
-					versionType.toLoggableString( next, session.getFactory() ) );
+			LOG.tracef(
+					"Incrementing: %s to %s",
+					versionType.toLoggableString( version, session.getFactory() ),
+					versionType.toLoggableString( next, session.getFactory() )
+			);
 		}
 		return next;
 	}
@@ -178,8 +143,8 @@ public final class Versioning {
 		if ( hasDirtyCollections ) {
 			return true;
 		}
-		for ( int i = 0; i < dirtyProperties.length; i++ ) {
-			if ( propertyVersionability[ dirtyProperties[i] ] ) {
+		for ( int dirtyProperty : dirtyProperties ) {
+			if ( propertyVersionability[dirtyProperty] ) {
 				return true;
 			}
 		}

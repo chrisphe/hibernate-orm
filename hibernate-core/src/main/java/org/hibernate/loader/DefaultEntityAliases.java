@@ -1,33 +1,15 @@
 /*
  * Hibernate, Relational Persistence for Idiomatic Java
  *
- * Copyright (c) 2008, Red Hat Middleware LLC or third-party contributors as
- * indicated by the @author tags or express copyright attribution
- * statements applied by the authors.  All third-party contributions are
- * distributed under license by Red Hat Middleware LLC.
- *
- * This copyrighted material is made available to anyone wishing to use, modify,
- * copy, or redistribute it subject to the terms and conditions of the GNU
- * Lesser General Public License, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
- * for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this distribution; if not, write to:
- * Free Software Foundation, Inc.
- * 51 Franklin Street, Fifth Floor
- * Boston, MA  02110-1301  USA
- *
+ * License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+ * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.loader;
 
+import java.util.Collections;
 import java.util.Map;
 
 import org.hibernate.internal.util.StringHelper;
-import org.hibernate.internal.util.collections.CollectionHelper;
 import org.hibernate.persister.entity.Loadable;
 
 /**
@@ -38,6 +20,8 @@ import org.hibernate.persister.entity.Loadable;
  *
  */
 public class DefaultEntityAliases implements EntityAliases {
+
+	private static final String[][] EMPTY_ARRAY_OF_ARRAY_OF_STRINGS = new String[0][];
 
 	private final String[] suffixedKeyColumns;
 	private final String[] suffixedVersionColumn;
@@ -58,18 +42,18 @@ public class DefaultEntityAliases implements EntityAliases {
 			Map userProvidedAliases,
 			Loadable persister,
 			String suffix) {
-		this.suffix = suffix;
+		this.suffix = suffix.intern();
 		this.userProvidedAliases = userProvidedAliases;
 
 		suffixedKeyColumns = determineKeyAlias( persister, suffix );
 		suffixedPropertyColumns = determinePropertyAliases( persister );
 		suffixedDiscriminatorColumn = determineDiscriminatorAlias( persister, suffix );
 		suffixedVersionColumn = determineVersionAlias( persister );
-		rowIdAlias = Loadable.ROWID_ALIAS + suffix; // TODO: not visible to the user!
+		rowIdAlias = (Loadable.ROWID_ALIAS + suffix).intern(); // TODO: not visible to the user!
 	}
 
 	public DefaultEntityAliases(Loadable persister, String suffix) {
-		this( CollectionHelper.EMPTY_MAP, persister, suffix );
+		this( Collections.EMPTY_MAP, persister, suffix );
 	}
 
 	private String[] determineKeyAlias(Loadable persister, String suffix) {
@@ -136,60 +120,59 @@ public class DefaultEntityAliases implements EntityAliases {
 		}
 	}
 
-	/**
-	 * {@inheritDoc}
-	 */
+	@Override
 	public String[][] getSuffixedPropertyAliases(Loadable persister) {
 		final int size = persister.getPropertyNames().length;
-		final String[][] suffixedPropertyAliases = new String[size][];
-		for ( int j = 0; j < size; j++ ) {
-			suffixedPropertyAliases[j] = getUserProvidedAliases(
-					persister.getPropertyNames()[j],
-					getPropertyAliases( persister, j )
-			);
-			suffixedPropertyAliases[j] = StringHelper.unquote( suffixedPropertyAliases[j], persister.getFactory().getDialect() );
-			intern( suffixedPropertyAliases[j] );
+		final String[][] suffixedPropertyAliases;
+		if (size > 0) {
+			suffixedPropertyAliases = new String[size][];
+			for ( int j = 0; j < size; j++ ) {
+				suffixedPropertyAliases[j] = getUserProvidedAliases(
+						persister.getPropertyNames()[j],
+						getPropertyAliases( persister, j )
+				);
+				suffixedPropertyAliases[j] = StringHelper.unquote( suffixedPropertyAliases[j], persister.getFactory().getDialect() );
+				intern( suffixedPropertyAliases[j] );
+			}
+		}
+		else {
+			suffixedPropertyAliases = EMPTY_ARRAY_OF_ARRAY_OF_STRINGS;
 		}
 		return suffixedPropertyAliases;
 	}
 
-	/**
-	 * {@inheritDoc}
-	 */
+	@Override
 	public String[] getSuffixedVersionAliases() {
 		return suffixedVersionColumn;
 	}
 
-	/**
-	 * {@inheritDoc}
-	 */
+	@Override
 	public String[][] getSuffixedPropertyAliases() {
 		return suffixedPropertyColumns;
 	}
 
-	/**
-	 * {@inheritDoc}
-	 */
+	@Override
 	public String getSuffixedDiscriminatorAlias() {
 		return suffixedDiscriminatorColumn;
 	}
 
-	/**
-	 * {@inheritDoc}
-	 */
+	@Override
 	public String[] getSuffixedKeyAliases() {
 		return suffixedKeyColumns;
 	}
 
-	/**
-	 * {@inheritDoc}
-	 */
+	@Override
 	public String getRowIdAlias() {
 		return rowIdAlias;
 	}
 
+	@Override
+	public String getSuffix() {
+		return suffix;
+	}
+
 	private static void intern(String[] strings) {
-		for (int i=0; i<strings.length; i++ ) {
+		for ( int i = 0; i < strings.length; i++ ) {
 			strings[i] = strings[i].intern();
 		}
 	}
